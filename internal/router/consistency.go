@@ -38,29 +38,34 @@ func (r *Router) selfConsistent(ctx context.Context, cat classify.Category, prom
 		return greedy, false // sampling failed; no signal either way
 	}
 
-	counts := map[string][]string{}
-	for _, v := range votes {
-		key := normalizeAnswer(cat, v)
-		if key == "" {
-			continue
+	if cat == classify.Math {
+		counts := map[string][]string{}
+		for _, v := range votes {
+			key := normalizeAnswer(cat, v)
+			if key == "" {
+				continue
+			}
+			counts[key] = append(counts[key], v)
 		}
-		counts[key] = append(counts[key], v)
-	}
-	need := len(votes)/2 + 1
-	if cat == classify.Logic {
-		// Logic is the local model's weakest category (5/8 on eval) and a
-		// confidently-wrong majority is common; demand unanimity to stay local.
-		need = len(votes)
-	}
-	for key, group := range counts {
-		if len(group) >= need {
-			if cat == classify.Math {
+		need := len(votes)/2 + 1
+		for key, group := range counts {
+			if len(group) >= need {
 				return key, true // the normalized number IS the answer
 			}
-			return group[0], true // raw form of a majority member
+		}
+		return greedy, false
+	}
+	// Logic: exact text match almost never happens across free-form samples
+	// ("Carol sits left" vs "Carol is in the leftmost seat"), so compare
+	// content overlap instead — but demand it from EVERY sample (logic is
+	// the weakest local category) and at a stricter threshold than the
+	// factual gate.
+	for _, v := range votes[1:] {
+		if !looselyAgreesAt(greedy, v, 0.5) {
+			return greedy, false
 		}
 	}
-	return greedy, false
+	return greedy, len(votes) >= 2
 }
 
 var reLastNumber = regexp.MustCompile(`-?\d[\d,]*(?:\.\d+)?`)
@@ -71,6 +76,10 @@ var rePunct = regexp.MustCompile(`[.,;:!?'"()\[\]{}]`)
 // and their stemmed content words must overlap enough. It is the cheap
 // stand-in for semantic-entropy clustering used to gate catch-all answers.
 func looselyAgrees(a, b string) bool {
+	return looselyAgreesAt(a, b, 0.3)
+}
+
+func looselyAgreesAt(a, b string, threshold float64) bool {
 	numsA := reLastNumber.FindAllString(a, -1)
 	numsB := reLastNumber.FindAllString(b, -1)
 	numbersMatch := false
@@ -96,7 +105,7 @@ func looselyAgrees(a, b string) bool {
 		}
 	}
 	union := len(wa) + len(wb) - inter
-	return float64(inter)/float64(union) >= 0.3
+	return float64(inter)/float64(union) >= threshold
 }
 
 var stopwords = map[string]bool{

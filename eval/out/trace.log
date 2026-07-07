@@ -1,67 +1,67 @@
-09:32:59.050661 loaded 64 tasks
-09:32:59.052150 using external local server at http://127.0.0.1:8080
-09:33:08.166185 task fact-1 cat=factual cls=llm layer=local consistent
-09:33:12.047413 task fact-2 cat=factual cls=llm layer=local consistent
-09:33:16.806656 task fact-3 cat=factual cls=llm layer=local consistent
-09:33:20.912070 task fact-5 cat=factual cls=llm layer=local consistent
-09:33:25.537920 task fact-6 cat=factual cls=llm layer=local consistent
-09:33:27.429710 task math-1 cat=math cls=regex layer=deterministic
-09:33:30.467328 task fact-7 cat=factual cls=llm layer=local consistent
-09:33:30.468343 task math-2 cat=math cls=llm layer=deterministic
-09:33:32.672473 task math-4 cat=math cls=regex layer=deterministic
-09:33:34.087564 task math-3 cat=math cls=llm layer=deterministic
-09:33:37.922412 task fact-4 cat=logic cls=regex layer=local-unproven
-09:33:38.801330 task fact-8 cat=factual cls=llm layer=local consistent
-09:34:05.676953 task math-7 cat=math cls=regex layer=local consistent
-09:34:08.282494 task sent-1 cat=sentiment cls=llm layer=local
-09:34:10.381952 task sent-2 cat=sentiment cls=llm layer=local
-09:34:13.880652 task sent-3 cat=sentiment cls=llm layer=local
-09:34:15.731004 task sent-4 cat=sentiment cls=llm layer=local
-09:34:17.936038 task sent-5 cat=sentiment cls=llm layer=local
-09:34:20.015166 task sent-6 cat=sentiment cls=llm layer=local
-09:34:22.179421 task sent-7 cat=sentiment cls=llm layer=local
-09:34:24.242046 task sent-8 cat=sentiment cls=llm layer=local
-09:34:27.948973 task summ-1 cat=summarize cls=llm layer=local
-09:34:30.733560 task math-6 cat=math cls=llm layer=local consistent
-09:34:30.816620 task summ-2 cat=summarize cls=regex layer=local
-09:34:32.994966 task math-5 cat=math cls=regex layer=local consistent
-09:34:35.716759 task summ-3 cat=summarize cls=regex layer=local
-09:34:35.717288 task math-8 cat=math cls=llm layer=local consistent
-09:34:36.728899 task summ-4 cat=summarize cls=regex layer=local
-09:34:39.320907 task summ-5 cat=summarize cls=llm layer=local
-09:34:40.963099 task summ-6 cat=summarize cls=regex layer=local
-09:34:43.064990 task summ-7 cat=summarize cls=llm layer=local
-09:34:46.167786 task summ-8 cat=summarize cls=llm layer=local
-09:34:46.772193 task ner-1 cat=ner cls=llm layer=local-unproven
-09:34:48.529855 task ner-2 cat=ner cls=llm layer=local-unproven
-09:34:51.688187 task ner-3 cat=ner cls=llm layer=local-unproven
-09:34:53.439773 task ner-5 cat=ner cls=llm layer=local-unproven
-09:34:54.769935 task ner-4 cat=ner cls=llm layer=local-unproven
-09:34:56.075543 task ner-6 cat=ner cls=llm layer=local-unproven
-09:34:59.837442 task ner-7 cat=ner cls=llm layer=local-unproven
-09:35:02.332764 task ner-8 cat=ner cls=llm layer=local-unproven
-09:35:11.874061 task debug-1 cat=code_debug cls=llm layer=local-unproven code-tested
-09:35:13.780774 task debug-2 cat=code_debug cls=llm layer=local code-tested
-09:35:16.617040 task debug-3 cat=code_debug cls=llm layer=local code-tested
-09:35:26.320347 task debug-4 cat=code_debug cls=llm layer=local-unproven code-tested
-09:35:26.367161 task debug-7 cat=code_debug cls=llm layer=local code-tested
-09:35:36.840644 task debug-5 cat=math cls=regex layer=local-unproven
-09:36:47.905199 task debug-6 cat=logic cls=llm layer=local-unproven
-09:36:57.364636 task logic-1 cat=logic cls=llm layer=local-unproven
-09:36:58.691303 task debug-8 cat=logic cls=llm layer=local-unproven
-09:37:21.829167 task logic-4 cat=math cls=llm layer=local-unproven
-09:37:48.491327 task logic-2 cat=logic cls=regex layer=local-unproven
-09:38:11.194780 task logic-3 cat=logic cls=llm layer=local consistent
-09:38:22.298923 task logic-6 cat=logic cls=llm layer=local-unproven
-09:38:35.614827 task code-1 cat=code_gen cls=llm layer=local code-tested
-09:38:45.656530 task code-2 cat=code_gen cls=llm layer=local code-tested
-09:38:51.954723 task logic-7 cat=logic cls=llm layer=local consistent
-09:39:01.052290 task code-4 cat=code_gen cls=llm layer=local code-tested
-09:39:09.989786 task code-3 cat=code_gen cls=llm layer=local code-tested
-09:39:17.419218 task code-5 cat=code_gen cls=llm layer=local code-tested
-09:39:29.047725 task code-7 cat=code_gen cls=llm layer=local code-tested
-09:39:31.716504 task code-6 cat=code_gen cls=llm layer=local code-tested
-09:39:47.169495 task logic-5 cat=logic cls=llm layer=local-unproven
-09:40:01.757514 task code-8 cat=code_gen cls=regex layer=local-unproven code-tested
-09:40:08.990029 task logic-8 cat=logic cls=llm layer=local consistent
-09:40:08.993568 done: 64 tasks in 7m9.909s
+10:29:46.782595 loaded 64 tasks
+10:29:46.786335 using external local server at http://127.0.0.1:8080
+10:29:54.540745 task fact-1 cat=factual cls=llm layer=local consistent
+10:29:57.015957 task fact-2 cat=factual cls=llm layer=local consistent
+10:30:01.923248 task fact-3 cat=factual cls=llm layer=local consistent
+10:30:05.863132 task fact-5 cat=factual cls=llm layer=local consistent
+10:30:08.978494 task fact-6 cat=factual cls=llm layer=local consistent
+10:30:10.807252 task math-1 cat=math cls=regex layer=deterministic
+10:30:13.738025 task math-2 cat=math cls=llm layer=deterministic
+10:30:14.892396 task fact-7 cat=factual cls=llm layer=local consistent
+10:30:16.778163 task math-4 cat=math cls=regex layer=deterministic
+10:30:17.192926 task math-3 cat=math cls=llm layer=deterministic
+10:30:19.002947 task fact-4 cat=logic cls=regex layer=local consistent
+10:30:20.644605 task fact-8 cat=factual cls=llm layer=local consistent
+10:30:44.873442 task math-7 cat=math cls=regex layer=local consistent
+10:30:47.190788 task sent-1 cat=sentiment cls=llm layer=local
+10:30:48.913044 task sent-2 cat=sentiment cls=llm layer=local
+10:30:51.811415 task sent-3 cat=sentiment cls=llm layer=local
+10:30:53.648782 task sent-4 cat=sentiment cls=llm layer=local
+10:30:55.566746 task sent-5 cat=sentiment cls=llm layer=local
+10:30:57.405560 task sent-6 cat=sentiment cls=llm layer=local
+10:30:59.247849 task sent-7 cat=sentiment cls=llm layer=local
+10:31:01.091602 task sent-8 cat=sentiment cls=llm layer=local
+10:31:04.528420 task summ-1 cat=summarize cls=llm layer=local
+10:31:07.119814 task summ-2 cat=summarize cls=regex layer=local
+10:31:07.554837 task math-6 cat=math cls=llm layer=local consistent
+10:31:08.363638 task math-5 cat=math cls=regex layer=local consistent
+10:31:11.971325 task summ-3 cat=summarize cls=regex layer=local
+10:31:12.115470 task math-8 cat=math cls=llm layer=local consistent
+10:31:12.557082 task summ-5 cat=summarize cls=llm layer=local
+10:31:13.301788 task summ-4 cat=summarize cls=regex layer=local
+10:31:16.206335 task summ-6 cat=summarize cls=regex layer=local
+10:31:17.456257 task ner-1 cat=ner cls=llm layer=local
+10:31:18.724728 task summ-7 cat=summarize cls=llm layer=local
+10:31:20.201039 task ner-2 cat=ner cls=llm layer=local
+10:31:20.739842 task summ-8 cat=summarize cls=llm layer=local
+10:31:21.908203 task ner-3 cat=ner cls=llm layer=local
+10:31:23.328482 task ner-4 cat=ner cls=llm layer=local
+10:31:23.740975 task ner-5 cat=ner cls=llm layer=local
+10:31:25.482117 task ner-6 cat=ner cls=llm layer=local
+10:31:26.516937 task ner-7 cat=ner cls=llm layer=local
+10:31:28.484523 task ner-8 cat=ner cls=llm layer=local
+10:31:38.709023 task debug-1 cat=code_debug cls=llm layer=local-unproven code-tested
+10:31:40.568543 task debug-2 cat=code_debug cls=llm layer=local code-tested
+10:31:41.128558 task debug-3 cat=code_debug cls=llm layer=local code-tested
+10:31:49.603043 task debug-4 cat=code_debug cls=llm layer=local-unproven code-tested
+10:31:50.305360 task debug-7 cat=code_debug cls=llm layer=local code-tested
+10:32:01.510513 task debug-5 cat=math cls=regex layer=local-unproven
+10:33:11.249960 task debug-8 cat=logic cls=llm layer=local-unproven
+10:33:15.940247 task logic-1 cat=logic cls=llm layer=local consistent
+10:33:17.205775 task debug-6 cat=logic cls=llm layer=local-unproven
+10:33:35.520854 task logic-2 cat=logic cls=regex layer=local-unproven
+10:33:38.259296 task logic-4 cat=math cls=llm layer=local-unproven
+10:34:17.253911 task logic-7 cat=logic cls=llm layer=local consistent
+10:34:22.371963 task logic-3 cat=logic cls=llm layer=local consistent
+10:34:27.468545 task logic-6 cat=logic cls=llm layer=local-unproven
+10:34:38.092468 task code-1 cat=code_gen cls=llm layer=local code-tested
+10:34:39.662616 task code-2 cat=code_gen cls=llm layer=local code-tested
+10:34:48.900670 task code-4 cat=code_gen cls=llm layer=local code-tested
+10:35:03.782327 task code-3 cat=code_gen cls=llm layer=local code-tested
+10:35:07.467234 task code-5 cat=code_gen cls=llm layer=local code-tested
+10:35:17.786683 task code-7 cat=code_gen cls=llm layer=local code-tested
+10:35:25.264974 task code-6 cat=code_gen cls=llm layer=local code-tested
+10:35:37.679788 task code-8 cat=code_gen cls=regex layer=local-unproven
+10:36:01.197108 task logic-5 cat=logic cls=llm layer=local-unproven
+10:36:16.420374 task logic-8 cat=logic cls=llm layer=local consistent
+10:36:16.472628 done: 64 tasks in 6m29.688s

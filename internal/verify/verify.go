@@ -8,6 +8,7 @@ import (
 )
 
 var (
+	reNERType   = regexp.MustCompile(`(?i)\b(person|organi[sz]ation|location|date|place|company|org)\b`)
 	reNumeric   = regexp.MustCompile(`-?\d[\d,]*\.?\d*`)
 	reSentWord  = regexp.MustCompile(`(?i)\b(positive|negative|neutral|mixed)\b`)
 	reRefusal   = regexp.MustCompile(`(?i)(i (can'?t|cannot|am unable)|as an ai|i don'?t know|i'?m not sure)`)
@@ -34,9 +35,9 @@ func Check(cat classify.Category, prompt, answer string) bool {
 		// (usually a truncated step dump) and must not pass.
 		return reNumeric.MatchString(a) && len(a) <= 60
 	case classify.NER:
-		// Expect at least one label-ish structure: "X (person)", "Person: X",
-		// a dash/bullet list, or JSON-ish output.
-		return strings.ContainsAny(a, ":-•([{")
+		// Expect at least one typed entity mention; separator style varies
+		// (em dash, colon, parens), so key off the type words themselves.
+		return reNERType.MatchString(a)
 	case classify.Summarize:
 		return checkSummaryConstraints(prompt, a)
 	case classify.Logic, classify.Factual:

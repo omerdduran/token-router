@@ -44,6 +44,12 @@ func (r *Router) verifyCodeByTests(ctx context.Context, prompt, code string) (bo
 	if err != nil || res.TimedOut {
 		return false, false
 	}
+	if res.ExitCode != 0 &&
+		(strings.Contains(res.Stderr, "NameError") || strings.Contains(res.Stderr, "SyntaxError")) {
+		// The generated asserts themselves are broken (undefined names, bad
+		// syntax) — that's a failed test HARNESS, not failed code. No signal.
+		return false, false
+	}
 	return res.ExitCode == 0, true
 }
 
