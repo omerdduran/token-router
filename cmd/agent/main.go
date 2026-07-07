@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"tokenrouter/internal/classify"
 	"tokenrouter/internal/config"
 	"tokenrouter/internal/llm"
 	"tokenrouter/internal/router"
@@ -73,27 +74,72 @@ func main() {
 	deadline, _ := ctx.Deadline()
 	r := router.New(fw, router.NewPacer(deadline, len(tasks)), cfg.RetryBudget)
 
-	// Worker pool over tasks; results land at their original index.
-	type job struct {
-		idx int
-		t   task.Task
+	// Batch pre-pass (opt-in): group short single-answer tasks so the system
+	// prompt is paid once per batch instead of once per task. Free-solvable
+	// tasks and parse failures fall through to the normal per-task path.
+	individual := make([]int, 0, len(tasks))
+	if cfg.BatchSize > 0 {
+		buckets := map[classify.Category][]int{}
+		for i, t := range tasks {
+			cat, _ := classify.ClassifyScored(t.Prompt)
+			if !router.Batchable(cat, t.Prompt) {
+				individual = append(individual, i)
+				continue
+			}
+			// Invariant: a misclassified puzzle must still hit the free solver.
+			if ans, ok := r.TrySolveFree(cat, t.Prompt); ok {
+				results[i].Answer = ans
+				r.Pace.TaskDone()
+				continue
+			}
+			buckets[cat] = append(buckets[cat], i)
+		}
+		for cat, idxs := range buckets {
+			for start := 0; start < len(idxs); start += cfg.BatchSize {
+				end := min(start+cfg.BatchSize, len(idxs))
+				chunk := idxs[start:end]
+				prompts := make([]string, len(chunk))
+				for k, idx := range chunk {
+					prompts[k] = tasks[idx].Prompt
+				}
+				answers, ok := r.AnswerBatch(ctx, cat, prompts)
+				if !ok {
+					individual = append(individual, chunk...) // fall back per-task
+					continue
+				}
+				resultsMu.Lock()
+				for k, idx := range chunk {
+					results[idx].Answer = answers[k]
+				}
+				resultsMu.Unlock()
+				for range chunk {
+					r.Pace.TaskDone()
+				}
+			}
+		}
+	} else {
+		for i := range tasks {
+			individual = append(individual, i)
+		}
 	}
-	jobs := make(chan job)
+
+	// Worker pool over the remaining per-task work.
+	jobs := make(chan int)
 	var wg sync.WaitGroup
 	for w := 0; w < cfg.Workers; w++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for j := range jobs {
-				answer := r.Answer(ctx, j.t)
+			for idx := range jobs {
+				answer := r.Answer(ctx, tasks[idx])
 				resultsMu.Lock()
-				results[j.idx].Answer = answer
+				results[idx].Answer = answer
 				resultsMu.Unlock()
 			}
 		}()
 	}
-	for i, t := range tasks {
-		jobs <- job{idx: i, t: t}
+	for _, idx := range individual {
+		jobs <- idx
 	}
 	close(jobs)
 	wg.Wait()

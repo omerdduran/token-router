@@ -41,3 +41,24 @@ Rakip pariteси için `SolveOrdering` (sıralama, topological sort) + `SolveSyl
 **Karar: TUT.** Kanonik ifadeli sıralama/kıyas görevlerini 0 token'a düşürüyor, hiçbir
 kapsam-dışı göreve YANLIŞ kod-cevabı vermiyor (altın kural korundu). Kapsam ifade-bağımlı
 (paraphrase'lerde deferliyor) ama risk sıfır. Gerçek değer gizli jüri ifadesine bağlı.
+
+## Batching (2026-07-07, toggle'lı — `BATCH_SIZE`)
+
+Sentiment+factual (tek satır, ≤300 char) görevleri tek çağrıda paketle → sistem-prompt bir
+kez. `internal/router/batch.go` + main.go ön-geçişi. Free-solve önce çalışır (invariant),
+parse başarısızsa tek-tek'e düşer.
+
+Mock A/B (tasks.json, tokenizer gerçekçi değil — call sayısı ölçütü geçerli, token değeri
+kaba):
+
+| Mod | Fireworks call | Token (mock) |
+|---|---|---|
+| BATCH_SIZE=0 | 60 | 4071 |
+| BATCH_SIZE=8 | **46** (−14) | 3781 |
+
+logic-6 (factual sınıflı) iki modda birebir aynı → free-solve invariant tuttu; boş cevap 0.
+
+**Karar: KOD TUT, VARSAYILAN KAPALI.** Mekanizma kanıtlandı (call −%23, güvenli fallback,
+invariant), ama batch modunda gerçek accuracy (bağlam karışması) ve gerçek token yalnızca
+canlı Fireworks'te ölçülebilir. Mock canned cevap verdiği için accuracy ölçülemez. `BATCH_SIZE`
+ladder knob olarak duruyor; canlıda token↓ + accuracy korunursa varsayılan 8 yapılacak.

@@ -68,20 +68,7 @@ func (r *Router) Answer(ctx context.Context, t task.Task) string {
 	defer r.Pace.TaskDone()
 
 	// Layer 0: plain code, zero tokens.
-	if cat == classify.Math {
-		if ans, ok := solveBareExpression(t.Prompt); ok {
-			trace.layer = "code"
-			return ans
-		}
-	}
-	// The logic solvers self-gate strictly (exact ordering / universal-
-	// syllogism shapes only), so run them regardless of classification —
-	// this rescues misclassified puzzles and never fires on other text.
-	if ans, ok := solve.SolveOrdering(t.Prompt); ok {
-		trace.layer = "code"
-		return ans
-	}
-	if ans, ok := solve.SolveSyllogism(t.Prompt); ok {
+	if ans, ok := r.TrySolveFree(cat, t.Prompt); ok {
 		trace.layer = "code"
 		return ans
 	}
@@ -110,6 +97,26 @@ func (r *Router) Answer(ctx context.Context, t task.Task) string {
 }
 
 // --- Layer 0 ---
+
+// TrySolveFree answers a task with plain code (zero tokens) when it fits one
+// of the deterministic shapes: a bare arithmetic expression, a transitive
+// ordering puzzle, or a universal syllogism. The logic solvers self-gate
+// strictly and run regardless of category, so a puzzle misclassified as
+// (say) factual is still rescued here before any paid call.
+func (r *Router) TrySolveFree(cat classify.Category, prompt string) (string, bool) {
+	if cat == classify.Math {
+		if ans, ok := solveBareExpression(prompt); ok {
+			return ans, true
+		}
+	}
+	if ans, ok := solve.SolveOrdering(prompt); ok {
+		return ans, true
+	}
+	if ans, ok := solve.SolveSyllogism(prompt); ok {
+		return ans, true
+	}
+	return "", false
+}
 
 var reBareExpr = regexp.MustCompile(`^[\s\d,.$+\-*/^()×÷%]+[?.\s]*$`)
 var reMathPreamble = regexp.MustCompile(`(?i)^\s*(what is|what'?s|calculate|compute|evaluate|solve)[:\s]*`)

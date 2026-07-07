@@ -5,7 +5,7 @@ import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
-def canned(system: str, user: str) -> str:
+def single(system: str) -> str:
     if "arithmetic expression" in system:
         return "0.85*240+18"
     if "Sentiment" in system:
@@ -17,6 +17,19 @@ def canned(system: str, user: str) -> str:
     if "Answer: <" in system:
         return "Reasoning here.\nAnswer: 42"
     return "A concise generic answer."
+
+
+# Numbered items in the user message => batched call: answer each line.
+BATCH_ITEM = re.compile(r"^\s*(\d+)\.\s", re.M)
+
+
+def canned(system: str, user: str) -> str:
+    if "numbered items" in system:
+        nums = BATCH_ITEM.findall(user)
+        if nums:
+            per = "Positive" if "Sentiment" in system else "A concise answer"
+            return "\n".join(f"{n}: {per}" for n in nums)
+    return single(system)
 
 
 class Handler(BaseHTTPRequestHandler):

@@ -23,6 +23,10 @@ type Config struct {
 	// RetryBudget caps paid second-attempt calls across the run (-1 =
 	// unlimited). The submission-ladder knob for leaderboard probing.
 	RetryBudget int
+
+	// BatchSize groups short single-answer tasks (sentiment/factual) into one
+	// API call. 0 = off (one call per task, the default until measured).
+	BatchSize int
 }
 
 func FromEnv() *Config {
@@ -39,6 +43,7 @@ func FromEnv() *Config {
 		RequestTimeout: envDur("REQUEST_TIMEOUT", 25*time.Second),
 
 		RetryBudget: envInt("RETRY_BUDGET", -1),
+		BatchSize:   envInt("BATCH_SIZE", 0),
 	}
 }
 
