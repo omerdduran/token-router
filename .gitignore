@@ -1,0 +1,6 @@
+.env
+*.gguf
+models/
+output/
+.playwright-mcp/
+dist/
