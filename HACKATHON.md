@@ -27,9 +27,13 @@ Son güncelleme: 7 Temmuz 2026.
 - **Koşullu model seçimi serbest:** "You can use conditions to select different models for different tasks, as long as they are from the allowed list."
 - ALLOWED_MODELS listesi değerlendirme boyunca sabit kalacak.
 
-**Gri alan (Discord'da sorulacak):** Model olmayan deterministik kod (Go ile aritmetik
-hesaplama, kod çalıştırarak doğrulama) — "local model" yasağına girmiyor görünüyor
-(inference değil), ama sıfır-API-çağrılı cevap üretmenin gate'te nasıl değerlendirildiği teyit edilmeli.
+**Gri alan ÇÖZÜLDÜ (7 Tem, ikinci organizatör açıklaması):** "Routing intelligence
+just means deciding when a task needs an LLM call (route to the cheapest
+ALLOWED_MODELS model) versus **when it can be handled with plain code (zero
+tokens)**. It's not local LLM vs. remote LLM." → Deterministik kod çözücüler
+(Go aritmetik, kod çalıştırarak doğrulama) açıkça meşru ve yarışmanın amaçlanan
+tasarımı. Kazanma formülü: düz kodla çözülebileni kodla çöz (0 token) + kalanını
+en ucuz yeterli modele minimum token'la yönlendir.
 
 ## ALLOWED_MODELS (Track 1, launch günü yayınlandı)
 
