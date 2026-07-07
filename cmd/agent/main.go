@@ -72,7 +72,7 @@ func main() {
 		cfg.AllowedModels,
 	)
 	deadline, _ := ctx.Deadline()
-	r := router.New(fw, router.NewPacer(deadline, len(tasks)), cfg.RetryBudget)
+	r := router.New(fw, router.NewPacer(deadline, len(tasks)), cfg.RetryBudget, cfg.StopSeqs)
 
 	// Batch pre-pass (opt-in): group short single-answer tasks so the system
 	// prompt is paid once per batch instead of once per task. Free-solvable

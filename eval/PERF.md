@@ -62,3 +62,21 @@ logic-6 (factual sınıflı) iki modda birebir aynı → free-solve invariant tu
 invariant), ama batch modunda gerçek accuracy (bağlam karışması) ve gerçek token yalnızca
 canlı Fireworks'te ölçülebilir. Mock canned cevap verdiği için accuracy ölçülemez. `BATCH_SIZE`
 ladder knob olarak duruyor; canlıda token↓ + accuracy korunursa varsayılan 8 yapılacak.
+
+## Stop sequences (2026-07-07, toggle'lı — `STOP_SEQ`)
+
+Kategori bazlı `\n\n` stop → cevap sonrası fazladan paragraf/dolgu kesilir (completion
+token). sentiment/factual/summarize/ner → `\n\n`; math/logic/code → yok (newline içerir);
+batch → yok (liste `\n` ile ayrılır); PAL → `\n` (ifade tek satır). `internal/router` +
+`STOP_SEQ` config.
+
+Mock stop'u yok sayar → token tasarrufu mock'ta GÖRÜNMEZ. Regresyon kontrolü: STOP_SEQ
+on/off cevaplar birebir özdeş (0 fark), boş cevap 0, hata 0 → stop parametresi hiçbir şeyi
+bozmuyor. Birim test: NER/kod'da asla `\n` stop'u yok (truncation koruması).
+
+**Karar: KOD TUT, VARSAYILAN KAPALI.** `\n\n` muhafazakâr (tek-paragraf cevabı korur), ama
+gerçek completion-token azalması ve olası truncation-accuracy etkisi yalnızca canlıda
+ölçülür. Ladder knob; canlıda token↓ + accuracy korunursa varsayılan açık yapılacak.
+
+**Canlı ölçüm kuyruğu:** `BATCH_SIZE`, `STOP_SEQ`, thinking-off — üçü de mock'ta accuracy
+ölçülemediği için varsayılan kapalı; ilk canlı Fireworks turunda birlikte A/B edilecek.

@@ -26,6 +26,19 @@ const genericSystem = "Answer the task directly and concisely."
 // the arithmetic can't be wrong.
 const palSystem = "Convert the problem to ONE arithmetic expression using only numbers and + - * / ^ ( ). No words, no equals sign. If not expressible as pure arithmetic, output UNSUPPORTED."
 
+// Stop sequences trim trailing filler (a second paragraph, sign-offs) that
+// would otherwise be billed as completion tokens. "\n\n" is the safe universal
+// choice: it preserves single-line and single-paragraph answers and only cuts
+// what follows a blank line. NEVER "\n" for NER (a multi-line entity list) or
+// code (blank lines are structural) — it would truncate the real answer.
+var remoteStop = map[classify.Category][]string{
+	classify.Sentiment: {"\n\n"},
+	classify.Factual:   {"\n\n"},
+	classify.Summarize: {"\n\n"},
+	classify.NER:       {"\n\n"},
+	// Math, Logic, CodeGen, CodeDebug: no stop (reasoning/code contain newlines).
+}
+
 var remoteMaxTokens = map[classify.Category]int{
 	classify.Factual:   130,
 	classify.Math:      150,

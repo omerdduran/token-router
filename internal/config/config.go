@@ -27,6 +27,10 @@ type Config struct {
 	// BatchSize groups short single-answer tasks (sentiment/factual) into one
 	// API call. 0 = off (one call per task, the default until measured).
 	BatchSize int
+
+	// StopSeqs trims trailing filler via category stop sequences. Off until
+	// measured live (accuracy effect can't be seen on a canned mock).
+	StopSeqs bool
 }
 
 func FromEnv() *Config {
@@ -44,6 +48,7 @@ func FromEnv() *Config {
 
 		RetryBudget: envInt("RETRY_BUDGET", -1),
 		BatchSize:   envInt("BATCH_SIZE", 0),
+		StopSeqs:    envBool("STOP_SEQ", false),
 	}
 }
 
@@ -68,6 +73,15 @@ func envInt(key string, def int) int {
 	if v := os.Getenv(key); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			return n
+		}
+	}
+	return def
+}
+
+func envBool(key string, def bool) bool {
+	if v := os.Getenv(key); v != "" {
+		if b, err := strconv.ParseBool(v); err == nil {
+			return b
 		}
 	}
 	return def

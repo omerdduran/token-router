@@ -27,16 +27,26 @@ type Router struct {
 	FW   *llm.Fireworks
 	Pace *Pacer // nil → always ModeFull
 
+	stopSeqs bool // apply category stop sequences to trim trailing filler
+
 	// retryBudget caps second-attempt calls across the whole run (-1 =
 	// unlimited). The submission-ladder knob: step it down between
 	// leaderboard probes.
 	retryBudget atomic.Int64
 }
 
-func New(fw *llm.Fireworks, pace *Pacer, retryBudget int) *Router {
-	r := &Router{FW: fw, Pace: pace}
+func New(fw *llm.Fireworks, pace *Pacer, retryBudget int, stopSeqs bool) *Router {
+	r := &Router{FW: fw, Pace: pace, stopSeqs: stopSeqs}
 	r.retryBudget.Store(int64(retryBudget))
 	return r
+}
+
+// stopFor returns the category's stop sequences when the feature is enabled.
+func (r *Router) stopFor(cat classify.Category) []string {
+	if !r.stopSeqs {
+		return nil
+	}
+	return remoteStop[cat]
 }
 
 // allowRetry spends one unit of retry budget if any is left.
@@ -141,10 +151,15 @@ func solveBareExpression(prompt string) (string, bool) {
 // is correct by construction. Falls back to a direct solve when the problem
 // isn't expressible.
 func (r *Router) mathPAL(ctx context.Context, prompt string, trace *decisionTrace) (string, error) {
+	var palStop []string
+	if r.stopSeqs {
+		palStop = []string{"\n"} // the expression is one line by construction
+	}
 	resp, err := r.FW.Chat(ctx, llm.RoleGeneral, llm.ChatRequest{
 		Messages:    []llm.Message{{Role: "system", Content: palSystem}, {Role: "user", Content: prompt}},
 		MaxTokens:   60,
 		Temperature: 0,
+		Stop:        palStop,
 	})
 	if err == nil {
 		expr := strings.TrimSpace(resp.Content)
@@ -255,6 +270,7 @@ func (r *Router) call(ctx context.Context, role llm.Role, cat classify.Category,
 		Messages:    []llm.Message{{Role: "system", Content: sys}, {Role: "user", Content: prompt}},
 		MaxTokens:   maxTok,
 		Temperature: 0,
+		Stop:        r.stopFor(cat),
 		// TODO: verify the Fireworks knob for disabling Gemma 4 / MiniMax
 		// thinking mode against the live API — thinking tokens are scored.
 	})
@@ -272,6 +288,7 @@ func (r *Router) callWithNudge(ctx context.Context, role llm.Role, cat classify.
 		},
 		MaxTokens:   remoteMaxTokens[cat],
 		Temperature: 0,
+		Stop:        r.stopFor(cat),
 	})
 	if err != nil {
 		return "", err
