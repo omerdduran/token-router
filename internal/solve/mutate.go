@@ -27,8 +27,11 @@ type mutation struct {
 }
 
 // operator swap table; longer tokens first so "<=" is seen before "<".
+// Both strictness flips (< ↔ <=) and direction flips (< ↔ >) are classic
+// single-token bugs.
 var mutOps = [][2]string{
-	{"<=", "<"}, {">=", ">"}, {"<", "<="}, {">", ">="},
+	{"<=", "<"}, {"<=", ">="}, {">=", ">"}, {">=", "<="},
+	{"<", "<="}, {"<", ">"}, {">", ">="}, {">", "<"},
 	{"==", "!="}, {"!=", "=="},
 	{" and ", " or "}, {" or ", " and "},
 	{" + ", " - "}, {" - ", " + "},

@@ -146,6 +146,28 @@ sayar → etki canlıda ölçülür → kapalı.
 **Kombinasyon dumanı:** PROMPT_COMPRESS=2 + MERGE_SYSTEM=1 + GRAMMAR=1 + STOP_SEQ=1
 + BATCH_SIZE=8, tasks.json → 45 çağrı, 64/64 dolu cevap, hata 0.
 
+### components.json — hedefli component probe seti (2026-07-07)
+
+22 görev: her component için çözücü-ateşlemeli + kasıtlı-defer çifti
+(`expected-components.json` ile). Mock koşusu — davranış matrisi 22/22 tasarımla
+birebir:
+
+| Component | Ateşledi (0 token) | Doğru defer etti |
+|---|---|---|
+| Knights | kk-1, kk-2 (both/self-ref), kk-3 (at-least-one) | kk-4 ("is not a knight" gramer dışı) |
+| Zebra | zb-1 (grid kısmen belirsizken sorgu-hücresi tekil) | zb-2 (üç domain) |
+| Pozisyon | pos-1 (ordinal+offset+bitişik; factual'a yanlış sınıflanmışken kurtarıldı), pos-2 | pos-3 (negasyon "was not last") |
+| Mutation repair | mr-1 (range üst sınır), mr-2 (`<`→`>` yön çevirme) | mr-3 (çok-token'lı fix) |
+| Library | sl-1 gcd, sl-2 vowels, sl-3 digit-sum | sl-4 (standart-dışı fib konvansiyonu — örnek varyantları eledi) |
+| Dedup | dd-2 (dd-1'in normalize kopyası, 0 ek çağrı) | — |
+
+11/22 görev 0 token; toplam 10 çağrı. 11 bedava cevabın içeriği beklenenle
+birebir doğrulandı. Bu seti mümkün kılan iki güvenli genişletme:
+`DeriveAsserts` artık "should return / must be" ve "returns X **instead of** Y"
+kalıplarını anlıyor (ikincide beklenti = Y; buggy gözlem asla assert olmuyor —
+regresyon testli) ve mutasyon tablosuna yön-çevirme (`<`↔`>`) eklendi.
+Regresyon: tasks.json 59, hard.json 20 çağrı — değişmedi.
+
 **Canlı ölçüm kuyruğu:** `BATCH_SIZE`, `STOP_SEQ`, `PROMPT_COMPRESS`,
 `MERGE_SYSTEM`, `GRAMMAR`, thinking-off — hepsi mock'ta accuracy ölçülemediği
 için varsayılan kapalı; ilk canlı Fireworks turunda tek tek A/B edilecek.

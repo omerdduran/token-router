@@ -23,6 +23,15 @@ func TestDeriveAsserts(t *testing.T) {
 			"Explain how photosynthesis works.",
 			nil,
 		},
+		{
+			// Debug phrasing: assert the corrected value, never the buggy one.
+			"This is buggy: factorial(5) returns 24 instead of 120. Fix it.",
+			[]string{"assert factorial(5) == 120"},
+		},
+		{
+			"Write square(n). square(4) should return 16 and square(9) must be 81.",
+			[]string{"assert square(4) == 16", "assert square(9) == 81"},
+		},
 	}
 	for _, c := range cases {
 		got := DeriveAsserts(c.prompt)

@@ -157,7 +157,7 @@ go run ./cmd/classcheck eval/tasks.json  # measure classifier accuracy standalon
 go test ./...                            # unit tests
 ```
 
-Three eval sets exercise different pressures: `tasks.json` (baseline, 8×8), `hard.json` (deliberately harder multi-step items), and `paraphrased.json` (reworded to test robustness to unseen phrasing).
+Four eval sets exercise different pressures: `tasks.json` (baseline, 8×8), `hard.json` (deliberately harder multi-step items), `paraphrased.json` (reworded to test robustness to unseen phrasing), and `components.json` (targeted probes for each experimental component — a solver-hit and a must-defer case per feature).
 
 ## Project layout
 
