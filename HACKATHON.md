@@ -13,7 +13,15 @@ Son güncelleme: 7 Temmuz 2026.
 ## Skorlama
 
 1. **Accuracy gate:** LLM-judge her cevabı "expected intent"e göre puanlar. Eşiğin altındakiler leaderboard'a giremez. Eşik değeri gizli.
-2. **Token sıralaması:** Gate'i geçenler, judging proxy'nin kaydettiği **toplam token**a göre artan sıralanır. Az token = üst sıra. (Fiyat değil, ham token sayısı.)
+2. **Token sıralaması:** Gate'i geçenler, judging proxy'nin kaydettiği **toplam token**a (prompt + completion) göre artan sıralanır. Az token = üst sıra. (Fiyat değil, ham token sayısı.)
+
+### ⚠️ Token (skor) ≠ Dolar (kredi) — karıştırma
+| | Neyi ölçer | Neye bağlı | Etkilediği |
+|---|---|---|---|
+| **Skor/sıralama** | toplam **token** | kaç token gönderip aldığın | leaderboard sıran |
+| **Kredi maliyeti** | harcanan **$** | model başına $/token | $50 dev bütçen |
+
+Model seçimi **skor açısından ~nötr** (3 Gemma aynı tokenizer → aynı string = aynı token; fark sadece gevezelik + retry sayısı). Model seçimi **dolar açısından farklı** (Kimi ~$0.95/$4.00, MiniMax ~$0.30/$1.20, Gemma ucuz per 1M) → sadece dev kredisini ilgilendirir, skoru değil.
 
 ## ⚠️ KRİTİK KURAL AÇIKLAMASI (7 Tem, organizatör Discord)
 
@@ -60,6 +68,18 @@ en ucuz yeterli modele minimum token'la yönlendir.
 - Hardcode/cache yasak — değerlendirme görülmemiş prompt varyantları kullanır
 - Submission: saatte 10 / takım
 - 8 kategori: factual, math, sentiment, summarization, NER, code debugging, logic, code generation
+
+## Dev workflow (organizatör önerisi)
+
+- **Geliştirme/testi lokal modelle yap, krediyi koru.** "Keep your development and
+  testing off the Fireworks API unless you want to buy more credits." Çözüm kriteri
+  tutturunca (önce accuracy, sonra en az token) Fireworks'e geç.
+- Uygulama: submission imajı Fireworks-only kalır; AMA aynı binary env ile lokal
+  llama-server'a yönlendirilebilir (`FIREWORKS_BASE_URL=localhost:8080`,
+  `ALLOWED_MODELS=local`). Client endpoint-agnostik. Dev/A-B testleri bedava lokal
+  Gemma'da, sadece final doğrulama Fireworks'te.
+- Uyarı: lokal Gemma E4B < gerçek Fireworks Gemma 31B. Lokal test → routing/format/
+  token-sayısı güvenilir; kesin accuracy + tam token → küçük gerçek-Fireworks turu.
 
 ## Kaynaklar / erişimler
 
