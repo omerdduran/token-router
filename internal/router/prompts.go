@@ -11,7 +11,7 @@ const localBase = "You are a precise assistant. Answer in English. No preamble, 
 var localSystem = map[classify.Category]string{
 	classify.Factual:   localBase + "Answer factually and concisely in 2-4 sentences.",
 	classify.Math:      localBase + "Solve step by step, then give the final line as 'Answer: <number>'.",
-	classify.Sentiment: localBase + "Classify the sentiment as Positive, Negative, Neutral, or Mixed, then justify it in one short sentence.",
+	classify.Sentiment: localBase + "Classify the sentiment as Positive, Negative, Neutral, or Mixed, then justify it in one short sentence. Rules: text that merely reports facts is Neutral even if the facts are emotionally charged; sarcastic praise is Negative; if both sides appear but the author lands on a clear overall verdict, use that side rather than Mixed.",
 	classify.Summarize: localBase + "Summarize exactly as instructed. Obey any length or format constraint strictly.",
 	classify.NER:       localBase + "Extract the requested entities. Output one entity per line as '<entity> — <type>'. Types: person, organization, location, date. Include every date, even relative ones like 'last October' or 'Wednesday'. No other text.",
 	classify.CodeDebug: localBase + "Identify the bug briefly, then output the corrected code in a single fenced code block.",
