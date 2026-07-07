@@ -150,8 +150,36 @@ func (r *Router) answerLocal(ctx context.Context, cat classify.Category, prompt 
 			trace.consistency = ok
 			return ans, ok
 		}
+		// Sentiment labels pass the format check even when the nuance call
+		// (sarcasm, reportive-neutral, mixed-but-positive) is wrong — the
+		// hard-set showed those slipping through as "proven". Require the
+		// label to survive one resample.
+		if cat == classify.Sentiment {
+			ok := r.sentimentAgreement(ctx, prompt, ans)
+			trace.consistency = ok
+			return ans, ok
+		}
 		return ans, true
 	}
+}
+
+var reSentLabel = regexp.MustCompile(`(?i)\b(positive|negative|neutral|mixed)\b`)
+
+// sentimentAgreement resamples once and accepts only when both samples pick
+// the same label. Ambiguous tone flips across samples; confident calls don't.
+func (r *Router) sentimentAgreement(ctx context.Context, prompt, greedy string) bool {
+	resp, err := r.Local.Chat(ctx, llm.ChatRequest{
+		Model:       "local",
+		Messages:    []llm.Message{{Role: "system", Content: localSystem[classify.Sentiment]}, {Role: "user", Content: prompt}},
+		MaxTokens:   localMaxTokens[classify.Sentiment],
+		Temperature: 0.7,
+	})
+	if err != nil {
+		return false
+	}
+	a := reSentLabel.FindString(strings.ToLower(greedy))
+	b := reSentLabel.FindString(strings.ToLower(resp.Content))
+	return a != "" && a == b
 }
 
 // factualAgreement draws one extra sample and accepts the answer only when

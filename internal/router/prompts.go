@@ -39,12 +39,12 @@ var remoteSystem = map[classify.Category]string{
 // are scored tokens — keep them tight per category.
 var localMaxTokens = map[classify.Category]int{
 	classify.Factual:   220,
-	classify.Math:      280,
+	classify.Math:      550, // hard multi-step problems truncated at 280 before reaching 'Answer:'
 	classify.Sentiment: 60,
 	classify.Summarize: 160,
 	classify.NER:       160,
 	classify.CodeDebug: 500,
-	classify.Logic:     600, // step-by-step reasoning needs room; 400 truncated valid solutions
+	classify.Logic:     900, // zebra-scale derivations truncated at 600 mid-conclusion
 	classify.CodeGen:   500,
 }
 
