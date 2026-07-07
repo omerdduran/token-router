@@ -1,35 +1,35 @@
 [
   {
     "task_id": "fact-1",
-    "answer": "The capital of Australia is Canberra. Although Sydney and Melbourne are larger and more well-known cities, Canberra was specifically chosen as the seat of government. It serves as the administrative and political center of the nation."
+    "answer": "Canberra serves as the capital city of Australia. It was specifically chosen as a compromise location between the rival cities of Sydney and Melbourne. The Australian Parliament House is located in Canberra."
   },
   {
     "task_id": "fact-2",
-    "answer": "Photosynthesis is the process used by plants and other organisms to convert light energy into chemical energy. Plants absorb sunlight using chlorophyll, which captures energy to convert carbon dioxide and water into glucose and oxygen. This process sustains life by producing food for the plant and releasing vital oxygen into the atmosphere."
+    "answer": "Plants convert sunlight into food through a process called photosynthesis. Chlorophyll, the green pigment in leaves, captures light energy to power a chemical reaction. This reaction uses carbon dioxide from the air and water absorbed through the roots to produce glucose (sugar) for energy and releases oxygen as a byproduct."
   },
   {
     "task_id": "fact-3",
-    "answer": "TCP (Transmission Control Protocol) is a connection-oriented protocol that ensures reliable data delivery through mechanisms like acknowledgments and retransmissions. UDP (User Datagram Protocol) is a connectionless protocol that prioritizes speed over reliability, sending data without establishing a formal connection. TCP guarantees ordered and error-checked delivery, making it suitable for web browsing, while UDP is used where speed is critical, such as in video streaming or DNS lookups."
+    "answer": "A network engineer chooses TCP when reliable, ordered delivery of data is critical, such as in web browsing (HTTP) or file transfers (FTP). UDP is preferred when speed and low latency are more important than guaranteed delivery, like in DNS lookups or live video streaming. The fundamental difference is that TCP is a connection-oriented protocol that uses acknowledgments and retransmissions to ensure data integrity, whereas UDP is connectionless and sends packets without confirmation."
   },
   {
     "task_id": "fact-4",
-    "answer": "George Orwell wrote the novel *Nineteen Eighty-Four*. It was first published in 1949. The book is a dystopian social science fiction novel."
+    "answer": "George Orwell, and it first came out in 1949."
   },
   {
     "task_id": "fact-5",
-    "answer": "Opportunity cost is the value of the next best alternative that must be forgone when making a choice. It represents the trade-off inherent in decision-making, as resources are scarce. For example, if a student chooses to spend an evening studying for an exam, the opportunity cost is the enjoyment they would have gained from going to a social event."
+    "answer": "Opportunity cost is the value of the next best alternative that must be forgone when making a choice. It represents the trade-off inherent in every decision, as resources are scarce. For example, if a student chooses to spend an evening studying economics, the opportunity cost is the enjoyment or benefit they would have gained from going to a social event instead."
   },
   {
     "task_id": "fact-6",
-    "answer": "The Earth has seasons because its axis is tilted at an angle relative to its orbital plane around the Sun. As the Earth revolves around the Sun, this tilt causes different hemispheres to receive varying amounts of direct sunlight throughout the year. When a hemisphere is tilted toward the Sun, it experiences summer, while the opposite hemisphere experiences winter."
+    "answer": "The existence of seasons is primarily caused by the tilt of the Earth's axis as it revolves around the Sun. Because the Earth is tilted, different hemispheres receive varying amounts of direct sunlight throughout the year. This change in the angle of the Sun's rays causes some parts of the Earth to experience longer, warmer days (summer) and shorter, cooler days (winter)."
   },
   {
     "task_id": "fact-7",
-    "answer": "HTTP status code 404 means \"Not Found.\" This indicates that the server could not find the requested resource at the specified URL. It signifies a client error, meaning the client likely requested a resource that does not exist on the server."
+    "answer": "A 404 error means \"Not Found,\" indicating that the server could not find the specific webpage or resource you requested. This usually means the URL you entered is incorrect, or the page has been moved or deleted from the website. The server itself is functioning, but the requested content does not exist at that address."
   },
   {
     "task_id": "fact-8",
-    "answer": "A hash function is a mathematical algorithm that takes an input of arbitrary size (the 'message') and returns a fixed-size string of bytes, called a hash value, digest, or simply a hash. The key properties of a good hash function are determinism (the same input always produces the same output), efficiency, and the avalanche effect (a small change in the input produces a drastically different output).\n\nOne common use of hash functions is in **data integrity verification** (e.g., checking file downloads). By hashing a file before and after transfer, you can ensure that the file has not been corrupted or tampered with during transit. If the calculated hash matches the original hash, the data is considered intact.\n\n```python\nimport hashlib\n\ndef calculate_file_hash(filepath, algorithm='sha256'):\n    \"\"\"Calculates the hash of a file.\"\"\"\n    hasher = hashlib.new(algorithm)\n    try:\n        with open(filepath, 'rb') as file:\n            # Read the file in chunks to handle large files efficiently\n            while True:\n                chunk = file.read(4096)\n                if not chunk:\n                    break\n                hasher.update(chunk)\n        return hasher.hexdigest()\n    except FileNotFoundError:\n        return \"Error: File not found\"\n\n# Example usage (assuming 'my_document.txt' exists)\n# file_hash = calculate_file_hash('my_document.txt')\n# print(f\"The SHA256 hash is: {file_hash}\")\n```"
+    "answer": "A hash function takes an input of any size and converts it into a fixed-size string of characters, called a hash value or digest. This process is deterministic, meaning the same input will always produce the same output. They are commonly used for data integrity checks, like verifying that a downloaded file hasn't been corrupted, and for securing passwords in databases."
   },
   {
     "task_id": "math-1",
@@ -53,7 +53,7 @@
   },
   {
     "task_id": "math-6",
-    "answer": "162"
+    "answer": "162.00"
   },
   {
     "task_id": "math-7",
@@ -65,67 +65,67 @@
   },
   {
     "task_id": "sent-1",
-    "answer": "Positive: The review expresses strong satisfaction with the phone's features."
+    "answer": "Positive. The reviewer uses strong positive language like \"absolutely love\" and \"stunning.\""
   },
   {
     "task_id": "sent-2",
-    "answer": "Negative. The comment expresses strong dissatisfaction with the service and food quality."
+    "answer": "Negative. The customer explicitly states poor service and unsatisfactory food quality."
   },
   {
     "task_id": "sent-3",
-    "answer": "Mixed. The review contains both positive aspects (room size/cleanliness) and negative aspects (wifi/breakfast)."
+    "answer": "Mixed. The review contains both positive aspects (spacious, clean room) and negative aspects (poor wifi, disappointing breakfast)."
   },
   {
     "task_id": "sent-4",
-    "answer": "Neutral. The statement is a factual report without emotional coloring."
+    "answer": "Neutral. The statement provides factual information without expressing emotion."
   },
   {
     "task_id": "sent-5",
-    "answer": "Negative. The user expresses frustration and disappointment with the software update."
+    "answer": "Negative. The writer expresses strong dissatisfaction with the software update."
   },
   {
     "task_id": "sent-6",
-    "answer": "Mixed. The review praises performance and value while noting a drawback in weight."
+    "answer": "Mixed. The reviewer praises performance and value while noting a drawback in weight."
   },
   {
     "task_id": "sent-7",
-    "answer": "Negative. The user expresses disappointment and failure to engage with the book."
+    "answer": "Negative. The reader expressed strong disappointment and inability to continue reading."
   },
   {
     "task_id": "sent-8",
-    "answer": "Positive. The feeling of pride outweighs the physical discomfort."
+    "answer": "Positive. The pride outweighs the physical pain of finishing the marathon."
   },
   {
     "task_id": "summ-1",
-    "answer": "Despite rapid adoption fueled by lower battery costs and environmental awareness, electric vehicles face hurdles like inadequate rural charging and battery production concerns, prompting automakers to invest in promising solid-state battery technology."
+    "answer": "Rapid EV adoption, fueled by lower battery costs and environmental awareness, faces hurdles like infrastructure gaps and charging times, though solid-state battery research offers a promising solution."
   },
   {
     "task_id": "summ-2",
-    "answer": "Council approved a transit budget: $45M for light rail, $12M for buses, and $3M for bike lanes."
+    "answer": "Council approved a transit budget: $45M for light rail, $12M for buses, $3M for bike lanes, aiming to reduce congestion."
   },
   {
     "task_id": "summ-3",
-    "answer": "University researchers created a graphene oxide water filter removing 99% of heavy metals/microplastics at lower pressure, cutting energy use by 40%. Field trials and regulatory approval are next steps."
+    "answer": "University researchers created a graphene oxide water filtration method that removes 99% of heavy metals and microplastics using 40% less energy than reverse osmosis. Field trials are planned next year, and the team seeks regulatory approval for city use."
   },
   {
     "task_id": "summ-4",
-    "answer": "Remote work has significantly altered office real estate, leading to high vacancy rates in city centers that necessitate conversions to residential or mixed-use spaces. Demand is shifting toward suburban co-working, and industry analysts anticipate office utilization stabilizing at 70-80% of 2019 levels with flexible leases becoming standard."
+    "answer": "Remote work has significantly altered office real estate, leading to high vacancy rates in major business districts. Consequently, landlords are converting towers to residential use, while suburban co-working spaces thrive as demand stabilizes at 70-80% of pre-pandemic levels."
   },
   {
     "task_id": "summ-5",
-    "answer": "A volcano erupted early Monday morning, sending ash 12 kilometers high, prompting the evacuation of 8,000 residents and the suspension of regional flights due to expected prolonged activity."
+    "answer": "A volcano erupted early Monday morning, sending ash 12 kilometers high, prompting the evacuation of 8,000 residents, the suspension of regional flights, and warnings of prolonged activity."
   },
   {
     "task_id": "summ-6",
-    "answer": "Walking 7,000+ daily significantly lowers early death risk; benefits plateau near 10,000 steps."
+    "answer": "Daily walking of 7,000+ steps significantly lowers early death risk; benefits plateau near 10,000."
   },
   {
     "task_id": "summ-7",
-    "answer": "The company launched its fourth-generation smartwatch in November, priced from $399, which includes blood-glucose monitoring, a 10-day battery life, and enhanced fitness tracking."
+    "answer": "The company launched its fourth-generation smartwatch today, which includes blood-glucose monitoring, a 10-day battery life, and enhanced fitness tracking, with models priced from $399 in November."
   },
   {
     "task_id": "summ-8",
-    "answer": "Due to severe droughts damaging harvests in major producers Brazil and Vietnam, coffee prices have reached a 15-year high, leading roasters to pass on costs resulting in a 20% year-over-year retail price increase, with analysts predicting sustained high prices for at least the next two growing seasons."
+    "answer": "Due to severe droughts damaging harvests in major producers Brazil and Vietnam, coffee prices have surged to a 15-year high, causing roasters to pass on costs resulting in a 20% year-over-year retail price increase, with analysts predicting elevated prices for at least the next two growing seasons."
   },
   {
     "task_id": "ner-1",
@@ -161,7 +161,7 @@
   },
   {
     "task_id": "debug-1",
-    "answer": "Bug: The function subtracts the two numbers instead of adding them.\n\n```python\ndef add(a, b):\n    return a + b\n```"
+    "answer": "Bug: The function subtracts instead of adding the two numbers.\n\n```python\ndef add(a, b):\n    return a + b\n```"
   },
   {
     "task_id": "debug-2",
@@ -169,7 +169,7 @@
   },
   {
     "task_id": "debug-3",
-    "answer": "KeyError when accessing a non-existent key in the dictionary.\n\n```python\ndef word_counts(words):\n    counts = {}\n    for w in words:\n        counts[w] = counts.get(w, 0) + 1\n    return counts\n```"
+    "answer": "KeyError: The dictionary `counts` is accessed with a key (`w`) that does not exist initially, causing a `KeyError` when trying to increment its count.\n\n```python\ndef word_counts(words):\n    counts = {}\n    for w in words:\n        counts[w] = counts.get(w, 0) + 1\n    return counts\n```"
   },
   {
     "task_id": "debug-4",
@@ -177,11 +177,11 @@
   },
   {
     "task_id": "debug-5",
-    "answer": "Index out of range error due to incorrect loop range.\n\n```python\ndef reverse_string(s):\n    result = ''\n    for i in range(len(s) - 1, -1, -1):\n        result += s[i]\n    return result\n```"
+    "answer": "The error occurs because the `range` function in Python is exclusive of the stop value. When iterating from `len(s)` down to $1$ (inclusive), the loop attempts to access `s[len(s)]` in the first iteration, which is an index out of bounds error since valid indices for a string of length $L$ are $0$ to $L-1$.\n\nTo fix this, the range should start at `len(s) - 1` (the last valid index) and stop *before* $-1$ (meaning it includes $0$).\n\nStep 1: Analyze the original loop range: `range(len(s), 0, -1)`.\nIf $s = \"abc\"$, $\\text{len}(s) = 3$. The range is $(3, 0, -1)$, yielding indices $3, 2, 1$.\nWhen $i=3$, `s[3]` causes an `IndexError`.\n\nStep 2: Determine the correct range for reverse iteration.\nWe need indices from $\\text{len}(s) - 1$ down to $0$.\nThe correct range is `range(len(s) - 1, -1, -1)`.\n\nStep 3: Implement the correction.\n\ndef reverse_string(s"
   },
   {
     "task_id": "debug-6",
-    "answer": "Bug: The original function only checks divisibility by 4, failing to account for the century rules (divisible by 100 but not by 400).\n\n```python\ndef is_leap(year):\n    return (year % 4 == 0 and year % 100 != 0) or (year % 400 == 0)\n```"
+    "answer": "(year % 4 == 0 and year % 100 != 0) or (year % 400 == 0)"
   },
   {
     "task_id": "debug-7",
@@ -189,15 +189,15 @@
   },
   {
     "task_id": "debug-8",
-    "answer": "Missing base case for recursion.\n\n```python\ndef factorial(n):\n    if n == 0:\n        return 1\n    return n * factorial(n - 1)\n```"
+    "answer": "The function is missing a base case. A base case (e.g., `if n \u003c= 1: return 1`) is required to stop the recursion."
   },
   {
     "task_id": "logic-1",
-    "answer": "Carol sits in the left seat, Bob sits in the middle seat, and Alice sits in the right seat."
+    "answer": "Carol is in the leftmost seat, Bob is in the middle seat, and Alice is in the rightmost seat."
   },
   {
     "task_id": "logic-2",
-    "answer": "Let $A$ be the statement made by person A: \"We are both knaves.\"\nLet $K_A$ mean \"A is a knight\" and $N_A$ mean \"A is a knave\".\nLet $K_B$ mean \"B is a knight\" and $N_B$ mean \"B is a knave\".\n\nWe know that:\n1. If a person is a knight, their statement is true.\n2. If a person is a knave, their statement is false.\n\nA's statement ($S_A$) is: \"$N_A$ and $N_B$\".\n\nWe analyze the possibilities for A:\n\nCase 1: A is a knight ($K_A$).\nIf A is a knight, A's statement ($S_A$) must be true.\n$S_A$ is true $\\implies N_A$ and $N_B$.\nIf $N_A$ is true, it contradicts the assumption that $K_A$ is true.\nTherefore, A cannot be a knight. ($K_A$ is impossible).\n\nCase 2: A is a knave ($N_A$).\nIf A is a knave, A's statement ($S_A$) must be false.\n$S_A$ is false $\\implies \\neg (N_A \\text{ and } N_B)$.\nUsing De Morgan's laws, $\\neg (N_A \\text{ and } N_B) \\equiv \\neg N_A \\text{ or } \\neg N_B$.\n$\\neg N_A$ means A is a knight ($K_A$).\n$\\neg N_B$ means B is a knight ($K_B$).\nSo, $S_A$ is false $\\implies K_A \\text{ or } K_B$.\n\nSince we are in Case 2, we assume $N_A$ is true.\nIf $N_A$ is true, then $K_A$ is false.\nFor the condition ($K_A \\text{ or } K_B$) to be true, since $K_A$ is false, $K_B$ must be true.\nThus, if A is a knave, B must be a knight.\n\nLet's verify this solution: A is a knave ($N_A$), B is a knight ($K_B$).\nA's statement ($S_A$): \"We are both knaves\" ($N_A$ and $N_B$).\nSince $N_A$ is true and $N_B$ is false (because B is a knight), the statement ($N_A$ and $N_B$) is (True and False), which is False.\nSince A is a knave"
+    "answer": "A is a liar and B is a truth-teller."
   },
   {
     "task_id": "logic-3",
@@ -205,19 +205,19 @@
   },
   {
     "task_id": "logic-4",
-    "answer": "Let $C$ be the number of chickens and $R$ be the number of rabbits.\n\nStep 1: Set up the equation for the total number of animals.\nChickens have 1 head and rabbits have 1 head.\n$$C + R = 20 \\quad (1)$$\n\nStep 2: Set up the equation for the total number of legs.\nChickens have 2 legs, and rabbits have 4 legs.\n$$2C + 4R = 56 \\quad (2)$$\n\nStep 3: Solve the system of linear equations.\nFrom equation (1), express $C$ in terms of $R$:\n$$C = 20 - R \\quad (3)$$\n\nStep 4: Substitute equation (3) into equation (2):\n$$2(20 - R) + 4R = 56$$\n\nStep 5: Solve for $R$:\n$$40 - 2R + 4R = 56$$\n$$40 + 2R = 56$$\n$$2R = 56 - 40$$\n$$2R = 16$$\n$$R = 8$$\n\nStep 6: Substitute the value of $R$ back into equation (3) to find $C$:\n$$"
+    "answer": "Let $C$ be the number of chickens and $R$ be the number of rabbits.\n\nStep 1: Set up equations based on the given information.\nEach animal has one head, so the total number of heads is:\n$$C + R = 20 \\quad (Equation \\ 1)$$\n\nChickens have 2 legs, and rabbits have 4 legs. The total number of legs is:\n$$2C + 4R = 56 \\quad (Equation \\ 2)$$\n\nStep 2: Solve the system of linear equations.\nFrom Equation 1, we can express $C$ in terms of $R$:\n$$C = 20 - R \\quad (Equation \\ 3)$$\n\nStep 3: Substitute Equation 3 into Equation 2.\n$$2(20 - R) + 4R = 56$$\n\nStep 4: Solve for $R$.\n$$40 - 2R + 4R = 56$$\n$$40 + 2R = 56$$\n$$2R = 56 - 40$$\n$$2R = 16$$\n$$R = 8$$\n\nStep 5: Substitute the value of $R$ back into Equation 3 to find $C$.\n$$C"
   },
   {
     "task_id": "logic-5",
-    "answer": "You should pick one fruit from the box labeled \"Mixed\". Since every label is incorrect, the box labeled \"Mixed\" must contain either only Apples or only Oranges. If you draw an Apple, you know that box is the \"Apples\" box, allowing you to deduce the contents of the other two."
+    "answer": "The crate labeled 'Mixed'. If the fruit is an Apple, the crate labeled 'Mixed' is Apples, the crate labeled 'Oranges' is Mixed, and the crate labeled 'Apples' is Oranges. If the fruit is an Orange, the crate"
   },
   {
     "task_id": "logic-6",
-    "answer": "Yes, because if all Bloops are Razzies and all Razzies are Lazzies, then by transitivity, all Bloops must be Lazzies."
+    "answer": "Yes, because if every Bloop is a Razzie and every Razzie is a Lazzie, then by the transitive property of implication, every Bloop must be a Lazzie."
   },
   {
     "task_id": "logic-7",
-    "answer": "Amy is available on Monday and Wednesday. Ben is available on Wednesday and Thursday. Cara is available on Monday and Wednesday. Therefore, the only day all three can meet is Wednesday."
+    "answer": "Wednesday"
   },
   {
     "task_id": "logic-8",
@@ -229,30 +229,30 @@
   },
   {
     "task_id": "code-2",
-    "answer": "```python\ndef is_palindrome(s):\n    \"\"\"\n    Checks if a string is a palindrome, ignoring case and spaces.\n    \"\"\"\n    processed_s = \"\".join(char.lower() for char in s if char.isalnum())\n    return processed_s == processed_s[::-1]\n```\nCall the function with a string to check if it is a palindrome."
+    "answer": "```python\ndef is_palindrome(s):\n    processed_s = \"\".join(char.lower() for char in s if char.isalnum())\n    return processed_s == processed_s[::-1]\n```\nCall the function with a string to check if it is a palindrome."
   },
   {
     "task_id": "code-3",
-    "answer": "```python\ndef fizzbuzz(n):\n    result = []\n    for i in range(1, n + 1):\n        if i % 3 == 0 and i % 5 == 0:\n            result.append('FizzBuzz')\n        elif i % 3 == 0:\n            result.append('Fizz')\n        elif i % 5 == 0:\n            result.append('Buzz')\n        else:\n            result.append(str(i))\n    return result\n```\nCall the function with an integer $n$ to get the list of FizzBuzz strings up to $n$."
+    "answer": "```python\ndef fizzbuzz(n):\n    result = []\n    for i in range(1, n + 1):\n        if i % 3 == 0 and i % 5 == 0:\n            result.append(\"FizzBuzz\")\n        elif i % 3 == 0:\n            result.append(\"Fizz\")\n        elif i % 5 == 0:\n            result.append(\"Buzz\")\n        else:\n            result.append(str(i))\n    return result\n```\nCall `fizzbuzz(15)` to generate the list for numbers 1 through 15."
   },
   {
     "task_id": "code-4",
-    "answer": "```python\ndef reverse_words(sentence):\n    return \" \".join(sentence.split()[::-1])\n```\nCall the function with a string to reverse the order of its words."
+    "answer": "```python\ndef reverse_words(sentence):\n    return ' '.join(sentence.split()[::-1])\n```\nCall the function with a string to reverse the order of its words."
   },
   {
     "task_id": "code-5",
-    "answer": "```python\nimport math\n\ndef is_prime(n: int) -\u003e bool:\n    \"\"\"\n    Checks if a given integer n is a prime number.\n    Efficient for n up to 10 million.\n    \"\"\"\n    if n \u003c= 1:\n        return False\n    if n \u003c= 3:\n        return True\n    if n % 2 == 0 or n % 3 == 0:\n        return False\n    \n    i = 5\n    # We only need to check up to the square root of n\n    limit = int(math.sqrt(n))\n    while i \u003c= limit:\n        if n % i == 0 or n % (i + 2) == 0:\n            return False\n        i += 6\n    return True\n```\nCall `is_prime(n)` with an integer `n` to check for primality."
+    "answer": "```python\nimport math\n\ndef is_prime(n):\n    if n \u003c= 1:\n        return False\n    if n \u003c= 3:\n        return True\n    if n % 2 == 0 or n % 3 == 0:\n        return False\n    i = 5\n    while i * i \u003c= n:\n        if n % i == 0 or n % (i + 2) == 0:\n            return False\n        i += 6\n    return True\n```\nCall `is_prime(n)` with the integer $n$ to check for primality."
   },
   {
     "task_id": "code-6",
-    "answer": "```python\ndef merge_sorted(a, b):\n    merged = []\n    i = 0\n    j = 0\n    while i \u003c len(a) and j \u003c len(b):\n        if a[i] \u003c= b[j]:\n            merged.append(a[i])\n            i += 1\n        else:\n            merged.append(b[j])\n            j += 1\n    merged.extend(a[i:])\n    merged.extend(b[j:])\n    return merged\n```\nCall the function with two sorted lists to get the merged sorted list."
+    "answer": "```python\ndef merge_sorted(a, b):\n    merged = []\n    i = 0\n    j = 0\n    while i \u003c len(a) and j \u003c len(b):\n        if a[i] \u003c= b[j]:\n            merged.append(a[i])\n            i += 1\n        else:\n            merged.append(b[j])\n            j += 1\n    merged.extend(a[i:])\n    merged.extend(b[j:])\n    return merged\n```\nCall `merge_sorted(list1, list2)` where `list1` and `list2` are the two already-sorted lists."
   },
   {
     "task_id": "code-7",
-    "answer": "```python\ndef count_vowels(s):\n    \"\"\"\n    Returns the number of vowels (a, e, i, o, u, case-insensitive) in the string s.\n    \"\"\"\n    vowels = \"aeiouAEIOU\"\n    count = 0\n    for char in s:\n        if char in vowels:\n            count += 1\n    return count\n```\nCall the function with a string argument to get the vowel count."
+    "answer": "```python\ndef count_vowels(s):\n    vowels = \"aeiouAEIOU\"\n    count = 0\n    for char in s:\n        if char in vowels:\n            count += 1\n    return count\n```\nCall the function with a string argument to get the vowel count."
   },
   {
     "task_id": "code-8",
-    "answer": "```python\nclass Stack:\n    def __init__(self):\n        self._items = []\n\n    def push(self, item):\n        self._items.append(item)\n\n    def pop(self):\n        if not self._items:\n            raise IndexError(\"pop from empty stack\")\n        return self._items.pop()\n\n    def peek(self):\n        if not self._items:\n            raise IndexError(\"peek from empty stack\")\n        return self._items[-1]\n\n    def is_empty(self):\n        return not self._items\n```\nInstantiate the class and call the methods to test stack operations."
+    "answer": "```python\nclass Stack:\n    def __init__(self):\n        self._items = []\n\n    def push(self, item):\n        self._items.append(item)\n\n    def pop(self):\n        if not self._items:\n            raise IndexError(\"pop from empty stack\")\n        return self._items.pop()\n\n    def peek(self):\n        if not self._items:\n            raise IndexError(\"peek from empty stack\")\n        return self._items[-1]\n\n    def is_empty(self):\n        return not self._items\n```\nInstantiate the class and call its methods to test the stack operations."
   }
 ]

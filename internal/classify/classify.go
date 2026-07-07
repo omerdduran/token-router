@@ -24,7 +24,9 @@ var (
 	reArithmetic = regexp.MustCompile(`\d[\d,.]*\s*[-+*/×÷%^]\s*[\d(]`)
 	reMathWords  = regexp.MustCompile(`(?i)\b(calculate|compute|how (much|many)|total|percent|percentage|sum of|difference|product of|divided|multiply|average|interest|discount|profit|revenue|cost|price|grow(s|th)?|increase|decrease|remainder|ratio|per (hour|day|week|month|year))\b`)
 	reSentiment  = regexp.MustCompile(`(?i)\b(sentiment|positive,? negative|negative,? positive|tone of|emotion(al)? (tone|polarity)|classify.{0,40}(review|tweet|comment|feedback|statement))\b`)
-	reSummarize  = regexp.MustCompile(`(?i)\b(summar(y|ize|ise|isation|ization)|condense|tl;?dr|in (one|two|a single|\d+) sentence|in \d+ words? or (less|fewer)|shorten (the|this))\b`)
+	// Note: bare "in one sentence" is a generic instruction (logic tasks say
+	// "explain in one sentence" too) — real summarization tasks carry a verb.
+	reSummarize  = regexp.MustCompile(`(?i)\b(summar(y|ize|ise|isation|ization)|condense|tl;?dr|shorten (the|this)|gist|boil .{0,20}down|in a nutshell|key points?|restate|rephrase|in (at most |no more than |under )?\d+ words)\b`)
 	reNER        = regexp.MustCompile(`(?i)\b(named entit|entit(y|ies)|extract (and label|all|the)?\s*(people|persons?|names|organi[sz]ations?|locations?|dates?|places)|identify (all |the )?(people|persons?|organi[sz]ations?|locations?|dates?))\b`)
 	reDebug      = regexp.MustCompile(`(?i)\b(bug(gy|s)?|debug|fix (the|this|my)|error in|doesn'?t work|not work(ing)?|incorrect(ly)? (output|result)|why does .{0,60}(fail|crash|return)|find (the|and fix))\b`)
 	reCodeGen    = regexp.MustCompile(`(?i)\b(write|implement|create|build|develop|generate)\b.{0,60}\b(function|method|class|program|script|code|algorithm|api|regex|sql)\b`)
@@ -35,6 +37,14 @@ var (
 // best match. Ambiguous prompts fall back to Factual, which is the safest
 // default pipeline (plain local answer).
 func Classify(prompt string) Category {
+	c, _ := ClassifyScored(prompt)
+	return c
+}
+
+// ClassifyScored also reports the winning score so callers can detect weak
+// signals (0 = pure default, 1 = single soft hint) and consult the local
+// model instead of trusting a blind fallback.
+func ClassifyScored(prompt string) (Category, int) {
 	p := strings.ToLower(prompt)
 	hasCode := reCodeBlock.MatchString(prompt)
 
@@ -83,5 +93,5 @@ func Classify(prompt string) Category {
 			best, bestScore = c, scores[c]
 		}
 	}
-	return best
+	return best, bestScore
 }

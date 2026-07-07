@@ -3,7 +3,9 @@ package router
 import (
 	"context"
 	"log"
+	"math"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -30,9 +32,20 @@ type Router struct {
 const escalateMaxPromptChars = 2400
 
 func (r *Router) Answer(ctx context.Context, t task.Task) string {
-	cat := classify.Classify(t.Prompt)
-	trace := &decisionTrace{id: t.ID, cat: cat}
+	cat, score := classify.ClassifyScored(t.Prompt)
+	trace := &decisionTrace{id: t.ID, cat: cat, clsSource: "regex"}
 	defer trace.emit()
+
+	// Weak lexical signal (unseen phrasing): let the local model classify —
+	// free, and far more robust to wording than keyword patterns. Long
+	// passages that merely CONTAIN numbers routinely fake a confident math
+	// score, so long "math" prompts get a second opinion too.
+	weakSignal := score < 2 || (cat == classify.Math && len(t.Prompt) > 350)
+	if weakSignal && r.Local != nil {
+		if c, ok := r.llmClassify(ctx, t.Prompt); ok {
+			cat, trace.cat, trace.clsSource = c, c, "llm"
+		}
+	}
 
 	// Layer 0: word problem → expression → exact evaluation in Go.
 	if cat == classify.Math {
@@ -103,20 +116,74 @@ func (r *Router) answerLocal(ctx context.Context, cat classify.Category, prompt 
 		return voted, ok
 
 	default: // factual, sentiment, summarize, ner
-		if verify.Check(cat, prompt, ans) {
-			return ans, true
-		}
-		// One corrective retry fixes most format slips, free of charge.
-		if ans2, err2 := r.localChat(ctx, cat, prompt,
-			"Your previous answer failed a format check. Follow the required output format exactly."); err2 == nil {
-			a2 := postprocess(cat, ans2)
-			if verify.Check(cat, prompt, a2) {
-				trace.retried = true
-				return a2, true
+		if !verify.Check(cat, prompt, ans) {
+			// One corrective retry fixes most format slips, free of charge.
+			ans2, err2 := r.localChat(ctx, cat, prompt,
+				"Your previous answer failed a format check. Follow the required output format exactly.")
+			if err2 != nil {
+				return ans, false
 			}
+			a2 := postprocess(cat, ans2)
+			if !verify.Check(cat, prompt, a2) {
+				return ans, false
+			}
+			trace.retried = true
+			ans = a2
 		}
-		return ans, false
+		// Factual is the catch-all bucket: misclassified tasks land here and
+		// its format check proves nothing. Demand agreement with a second
+		// independent sample before trusting the answer.
+		if cat == classify.Factual {
+			ok := r.factualAgreement(ctx, prompt, ans)
+			trace.consistency = ok
+			return ans, ok
+		}
+		return ans, true
 	}
+}
+
+// factualAgreement draws one extra sample and accepts the answer only when
+// both tellings agree on content — a cheap semantic-entropy stand-in that
+// catches the model improvising.
+func (r *Router) factualAgreement(ctx context.Context, prompt, greedy string) bool {
+	resp, err := r.Local.Chat(ctx, llm.ChatRequest{
+		Model:       "local",
+		Messages:    []llm.Message{{Role: "system", Content: localSystem[classify.Factual]}, {Role: "user", Content: prompt}},
+		MaxTokens:   localMaxTokens[classify.Factual],
+		Temperature: 0.7,
+	})
+	if err != nil {
+		return false
+	}
+	return looselyAgrees(greedy, postprocess(classify.Factual, resp.Content))
+}
+
+var llmCategories = map[string]classify.Category{
+	"factual": classify.Factual, "math": classify.Math,
+	"sentiment": classify.Sentiment, "summarize": classify.Summarize,
+	"ner": classify.NER, "code_debug": classify.CodeDebug,
+	"logic": classify.Logic, "code_gen": classify.CodeGen,
+}
+
+func (r *Router) llmClassify(ctx context.Context, prompt string) (classify.Category, bool) {
+	resp, err := r.Local.Chat(ctx, llm.ChatRequest{
+		Model: "local",
+		Messages: []llm.Message{
+			{Role: "system", Content: "Classify the task into exactly one of: factual, math, sentiment, summarize, ner, code_debug, logic, code_gen. Reply with only the category word."},
+			{Role: "user", Content: prompt},
+		},
+		MaxTokens:   8,
+		Temperature: 0,
+	})
+	if err != nil {
+		return "", false
+	}
+	word := strings.ToLower(strings.Trim(strings.TrimSpace(resp.Content), ".\"'` \n"))
+	if i := strings.IndexAny(word, " \n\t"); i > 0 {
+		word = word[:i]
+	}
+	c, ok := llmCategories[word]
+	return c, ok
 }
 
 // proveCode runs the syntax gate, then self-generated tests, then one free
@@ -165,7 +232,7 @@ var reBareExpr = regexp.MustCompile(`^[\s\d,.$+\-*/^()×÷%]+[?.\s]*$`)
 // reMultiQuantity flags questions asking for more than one value ("how many
 // chickens and how many rabbits") — a single arithmetic expression cannot
 // answer those, and a confident wrong number would bypass escalation.
-var reMultiQuantity = regexp.MustCompile(`(?i)how (many|much) .{0,60}\band\b .{0,60}(how (many|much)|are there)|\?.*\?`)
+var reMultiQuantity = regexp.MustCompile(`(?i)how (many|much) .{0,60}\band\b .{0,60}(how (many|much)|are there)|\?.*\?|\bnumber of each\b|\beach (animal|kind|type)\b`)
 
 func (r *Router) tryDeterministicMath(ctx context.Context, prompt string) (string, bool) {
 	if reMultiQuantity.MatchString(prompt) {
@@ -195,11 +262,45 @@ func (r *Router) tryDeterministicMath(ctx context.Context, prompt string) (strin
 	if strings.Contains(strings.ToUpper(expr), "UNSUPPORTED") || expr == "" {
 		return "", false
 	}
+	// A bare number is an echo, not a computation — nothing to trust.
+	if !strings.ContainsAny(expr, "+-*/^") {
+		return "", false
+	}
 	v, err := solve.EvalExpr(expr)
 	if err != nil {
 		return "", false
 	}
-	return solve.FormatNumber(v), true
+	det := solve.FormatNumber(v)
+	// Cross-check: a misrouted task (summarize/logic classified as math)
+	// still yields a syntactically valid expression and a confidently wrong
+	// number. Only trust the deterministic path when an independent terse
+	// answer from the model lands on the same value; otherwise fall through
+	// to the normal verify-then-escalate flow.
+	check, err := r.Local.Chat(ctx, llm.ChatRequest{
+		Model:       "local",
+		Messages:    []llm.Message{{Role: "system", Content: "Solve the problem. Reply with ONLY the final number."}, {Role: "user", Content: prompt}},
+		MaxTokens:   40,
+		Temperature: 0,
+	})
+	if err != nil || !sameNumber(det, normalizeAnswer(classify.Math, strings.TrimSpace(check.Content))) {
+		return "", false
+	}
+	return det, true
+}
+
+// sameNumber compares two numeric strings with float tolerance so "72" and
+// "72.0" (or rounding tails) agree.
+func sameNumber(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	fa, errA := strconv.ParseFloat(strings.ReplaceAll(a, ",", ""), 64)
+	fb, errB := strconv.ParseFloat(strings.ReplaceAll(b, ",", ""), 64)
+	if errA != nil || errB != nil {
+		return a == b
+	}
+	tol := 1e-6 * math.Max(1, math.Abs(fa))
+	return math.Abs(fa-fb) <= tol
 }
 
 var reMathPreamble = regexp.MustCompile(`(?i)^\s*(what is|what'?s|calculate|compute|evaluate|solve)[:\s]*`)
@@ -295,6 +396,7 @@ func postprocess(cat classify.Category, s string) string {
 type decisionTrace struct {
 	id          string
 	cat         classify.Category
+	clsSource   string
 	layer       string
 	consistency bool
 	retried     bool
@@ -303,7 +405,7 @@ type decisionTrace struct {
 }
 
 func (d *decisionTrace) emit() {
-	parts := []string{"task " + d.id, "cat=" + string(d.cat), "layer=" + d.layer}
+	parts := []string{"task " + d.id, "cat=" + string(d.cat), "cls=" + d.clsSource, "layer=" + d.layer}
 	if d.consistency {
 		parts = append(parts, "consistent")
 	}

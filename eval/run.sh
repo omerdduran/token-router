@@ -29,7 +29,7 @@ fi
 START=$(date +%s)
 # FIREWORKS_*/ALLOWED_MODELS/DISABLE_REMOTE are inherited from the caller's
 # environment; only the harness paths are pinned here.
-INPUT_PATH=eval/tasks.json OUTPUT_PATH="$OUT_DIR/results.json" \
+INPUT_PATH="${INPUT_PATH:-eval/tasks.json}" OUTPUT_PATH="$OUT_DIR/results.json" \
   LOCAL_BASE_URL=http://127.0.0.1:8080 \
   go run ./cmd/agent 2> >(tee "$OUT_DIR/trace.log" >&2)
 echo "elapsed: $(( $(date +%s) - START ))s"
