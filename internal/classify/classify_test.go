@@ -15,6 +15,8 @@ func TestClassify(t *testing.T) {
 		{"Write a Python function that returns the nth Fibonacci number.", CodeGen},
 		{"This function should return the sum but it doesn't work. Fix the bug:\ndef add(a, b):\n    return a - b", CodeDebug},
 		{"Three friends sit in a row. Alice is not on the left. Bob sits next to Carol. Who sits where?", Logic},
+		{"On an island, knights always tell the truth and knaves always lie. A says: 'We are both knaves.' What are A and B?", Logic},
+		{"Five houses in a row are painted red, blue, green, white, and yellow. The red house is immediately left of the blue house. What is the order?", Logic},
 		{"Explain how photosynthesis works.", Factual},
 		{"What is the capital of Australia?", Factual},
 	}

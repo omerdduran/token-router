@@ -28,7 +28,7 @@ var (
 	reNER        = regexp.MustCompile(`(?i)\b(named entit|entit(y|ies)|extract (and label|all|the)?\s*(people|persons?|names|organi[sz]ations?|locations?|dates?|places)|identify (all |the )?(people|persons?|organi[sz]ations?|locations?|dates?))\b`)
 	reDebug      = regexp.MustCompile(`(?i)\b(bug(gy|s)?|debug|fix (the|this|my)|error in|doesn'?t work|not work(ing)?|incorrect(ly)? (output|result)|why does .{0,60}(fail|crash|return)|find (the|and fix))\b`)
 	reCodeGen    = regexp.MustCompile(`(?i)\b(write|implement|create|build|develop|generate)\b.{0,60}\b(function|method|class|program|script|code|algorithm|api|regex|sql)\b`)
-	reLogic      = regexp.MustCompile(`(?i)\b(puzzle|riddle|constraint|deduce|deduction|logical(ly)?|who (owns|lives|sits|is the)|seated|arrange|knights? and knaves|truth[- ]?teller|liar|exactly one|if all .{0,40} then|conclude)\b`)
+	reLogic      = regexp.MustCompile(`(?i)\b(puzzle|riddle|constraint|deduce|deduction|logical(ly)?|who (owns|lives|sits|is the|won|finished)|seated|arrange|knights?|knaves?|truth[- ]?teller|liar|always (tell|tells) the truth|always lies?|exactly one|if all .{0,40} then|conclude|in a row|immediately (to the )?(left|right)|far (left|right)|next to (the|each other))\b`)
 )
 
 // Classify scores each category with cheap lexical signals and returns the

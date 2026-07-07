@@ -133,7 +133,7 @@
   },
   {
     "task_id": "ner-2",
-    "answer": "Angela Merkel — person\nSiemens — organization\nVolkswagen — organization\nBerlin — location\nOctober — date"
+    "answer": "Angela Merkel — person\nSiemens — organization\nVolkswagen — organization\nBerlin — location\nlast October — date"
   },
   {
     "task_id": "ner-3",
@@ -149,11 +149,11 @@
   },
   {
     "task_id": "ner-6",
-    "answer": "Goldman Sachs — organization\nJPMorgan — organization\nFederal Reserve — organization\nWashington — location"
+    "answer": "Goldman Sachs — organization\nJPMorgan — organization\nFederal Reserve — organization\nWashington — location\nWednesday — date"
   },
   {
     "task_id": "ner-7",
-    "answer": "Elon Musk — person\nSpaceX — organization\nCape Canaveral — location\nJanuary 24 — date"
+    "answer": "Elon Musk — person\nSpaceX — organization\nCape Canaveral — location\nFriday, January 24 — date"
   },
   {
     "task_id": "ner-8",
@@ -193,19 +193,19 @@
   },
   {
     "task_id": "logic-1",
-    "answer": "Let the three seats be denoted as Seat 1 (Left), Seat 2 (Middle), and Seat 3 (Right).\nThe friends are Alice (A), Bob (B), and Carol (C).\n\nWe are given two conditions:\n1. Alice does not sit on the left. (A is not in Seat 1)\n2. Bob sits immediately to the right of Carol. (C and B are adjacent in the order C B)\n\nFrom condition 1, Alice can sit in Seat 2 or Seat 3.\nPossible positions for A: $\\{2, 3\\}$\n\nFrom condition 2, the pair (C, B) must occupy two adjacent seats. The possible pairs of adjacent seats are (Seat 1, Seat 2) or (Seat 2, Seat 3).\n\nCase 1: (C, B) occupy (Seat 1, Seat 2).\nIf C is in Seat 1 and B is in Seat 2, then Alice must be in Seat 3.\nArrangement: (C, B, A)\nCheck conditions:\n1. Alice is in Seat 3 (not Seat 1). (Satisfied)\n2. Bob (Seat 2) is immediately to the right of Carol (Seat 1). (Satisfied)\nThis is a valid arrangement.\n\nCase 2: (C, B) occupy (Seat 2, Seat 3).\nIf C is in Seat 2 and B is in Seat 3, then Alice must be in Seat 1.\nArrangement: (A, C, B)\nCheck conditions:\n1. Alice is in Seat 1. (Violates condition 1: Alice does not sit on the left). (Not satisfied)\n\nSince Case 1 is the only arrangement that satisfies both conditions, the seating order is Carol, Bob, Alice.\n\nSeat 1 (Left):"
+    "answer": "Carol sits in the left seat, Bob sits in the middle seat, and Alice sits in the right seat."
   },
   {
     "task_id": "logic-2",
-    "answer": "A must be a knave. If A were a knight, their statement \"We are both knaves\" would be true, meaning A is a knave, a contradiction. Therefore, A is a knave, and their statement is a lie, meaning at least one of them is a knight. B could be either a knight or a knave."
+    "answer": "Let $A$ be the statement made by person A: \"We are both knaves.\"\nLet $K_A$ mean \"A is a knight\" and $N_A$ mean \"A is a knave\".\nLet $K_B$ mean \"B is a knight\" and $N_B$ mean \"B is a knave\".\n\nWe know that:\n1. If a person is a knight, their statement is true.\n2. If a person is a knave, their statement is false.\n\nA's statement ($S_A$) is: \"$N_A$ and $N_B$\".\n\nWe analyze the possibilities for A:\n\nCase 1: A is a knight ($K_A$).\nIf A is a knight, A's statement ($S_A$) must be true.\n$S_A$ is true $\\implies N_A$ and $N_B$.\nIf $N_A$ is true, it contradicts the assumption that $K_A$ is true.\nTherefore, A cannot be a knight. ($K_A$ is impossible).\n\nCase 2: A is a knave ($N_A$).\nIf A is a knave, A's statement ($S_A$) must be false.\n$S_A$ is false $\\implies \\neg (N_A \\text{ and } N_B)$.\nUsing De Morgan's laws, $\\neg (N_A \\text{ and } N_B) \\equiv \\neg N_A \\text{ or } \\neg N_B$.\n$\\neg N_A$ means A is a knight ($K_A$).\n$\\neg N_B$ means B is a knight ($K_B$).\nSo, $S_A$ is false $\\implies K_A \\text{ or } K_B$.\n\nSince we are in Case 2, we assume $N_A$ is true.\nIf $N_A$ is true, then $K_A$ is false.\nFor the condition ($K_A \\text{ or } K_B$) to be true, since $K_A$ is false, $K_B$ must be true.\nThus, if A is a knave, B must be a knight.\n\nLet's verify this solution: A is a knave ($N_A$), B is a knight ($K_B$).\nA's statement ($S_A$): \"We are both knaves\" ($N_A$ and $N_B$).\nSince $N_A$ is true and $N_B$ is false (because B is a knight), the statement ($N_A$ and $N_B$) is (True and False), which is False.\nSince A is a knave"
   },
   {
     "task_id": "logic-3",
-    "answer": "The finishing order is Fay, Dana, Eli, and Gil. Fay finished first, meaning she won the race. Gil finished last, and Dana finished after Fay but before Eli."
+    "answer": "Fay"
   },
   {
     "task_id": "logic-4",
-    "answer": "14.818182"
+    "answer": "Let $C$ be the number of chickens and $R$ be the number of rabbits.\n\nStep 1: Set up the equation for the total number of animals.\nChickens have 1 head and rabbits have 1 head.\n$$C + R = 20 \\quad (1)$$\n\nStep 2: Set up the equation for the total number of legs.\nChickens have 2 legs, and rabbits have 4 legs.\n$$2C + 4R = 56 \\quad (2)$$\n\nStep 3: Solve the system of linear equations.\nFrom equation (1), express $C$ in terms of $R$:\n$$C = 20 - R \\quad (3)$$\n\nStep 4: Substitute equation (3) into equation (2):\n$$2(20 - R) + 4R = 56$$\n\nStep 5: Solve for $R$:\n$$40 - 2R + 4R = 56$$\n$$40 + 2R = 56$$\n$$2R = 56 - 40$$\n$$2R = 16$$\n$$R = 8$$\n\nStep 6: Substitute the value of $R$ back into equation (3) to find $C$:\n$$"
   },
   {
     "task_id": "logic-5",
@@ -221,7 +221,7 @@
   },
   {
     "task_id": "logic-8",
-    "answer": "The order of the houses from left to right is green, yellow, red, blue, white. The green house is at position 1, and the blue house is at position 5. Since the red house is immediately left of the blue house, red must be at position 4. This leaves yellow and white for positions 2 and 3, and the white house cannot be next to the green house, placing yellow at position 2 and white at position 3."
+    "answer": "Green, Yellow, White, Red, Blue"
   },
   {
     "task_id": "code-1",
