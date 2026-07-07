@@ -74,9 +74,21 @@ func (r *Router) Answer(ctx context.Context, t task.Task) string {
 			trace.note = "escalation skipped: long input"
 			return best
 		}
-		if ans, err := r.remoteChat(ctx, cat, t.Prompt); err == nil {
+		if ans, err := r.remoteChat(ctx, roleFor(cat), cat, t.Prompt); err == nil {
 			if a := postprocess(cat, ans); a != "" {
 				trace.layer = "remote"
+				// Verification is local and free — apply it to paid answers
+				// too. A failed code answer gets one shot at the specialist
+				// model before we settle.
+				if !r.remoteAcceptable(ctx, cat, t.Prompt, a) &&
+					(cat == classify.CodeGen || cat == classify.CodeDebug) {
+					if ans2, err2 := r.remoteChat(ctx, llm.RoleCode, cat, t.Prompt); err2 == nil {
+						if a2 := postprocess(cat, ans2); a2 != "" && r.remoteAcceptable(ctx, cat, t.Prompt, a2) {
+							trace.layer = "remote-code"
+							return a2
+						}
+					}
+				}
 				return a
 			}
 		} else {
@@ -361,8 +373,26 @@ func roleFor(cat classify.Category) llm.Role {
 	}
 }
 
-func (r *Router) remoteChat(ctx context.Context, cat classify.Category, prompt string) (string, error) {
-	resp, err := r.FW.Chat(ctx, roleFor(cat), llm.ChatRequest{
+// remoteAcceptable reruns the free local checks on a paid answer: format
+// gates always, plus real execution when the answer is runnable code.
+func (r *Router) remoteAcceptable(ctx context.Context, cat classify.Category, prompt, answer string) bool {
+	if !verify.Check(cat, prompt, answer) {
+		return false
+	}
+	if (cat == classify.CodeGen || cat == classify.CodeDebug) && r.Local != nil {
+		code := solve.ExtractCode(answer)
+		if code == "" {
+			return false
+		}
+		if passed, tested := r.verifyCodeByTests(ctx, prompt, code); tested {
+			return passed
+		}
+	}
+	return true
+}
+
+func (r *Router) remoteChat(ctx context.Context, role llm.Role, cat classify.Category, prompt string) (string, error) {
+	resp, err := r.FW.Chat(ctx, role, llm.ChatRequest{
 		Messages:    []llm.Message{{Role: "system", Content: remoteSystem[cat]}, {Role: "user", Content: prompt}},
 		MaxTokens:   remoteMaxTokens[cat],
 		Temperature: 0,

@@ -5,7 +5,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 
 	"tokenrouter/internal/config"
@@ -33,6 +35,7 @@ func main() {
 	// Write a full skeleton immediately: even a crash later leaves valid JSON
 	// with every task_id present.
 	results := make([]task.Result, len(tasks))
+	var resultsMu sync.Mutex
 	for i, t := range tasks {
 		results[i] = task.Result{ID: t.ID, Answer: ""}
 	}
@@ -40,6 +43,24 @@ func main() {
 		log.Printf("fatal: initial write: %v", err)
 		os.Exit(1)
 	}
+
+	// If the harness kills us early, flush whatever is answered so far —
+	// partial answers score better than none, and the JSON stays valid.
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
+	go func() {
+		sig := <-sigCh
+		resultsMu.Lock()
+		snapshot := make([]task.Result, len(results))
+		copy(snapshot, results)
+		resultsMu.Unlock()
+		if err := task.WriteAtomic(cfg.OutputPath, snapshot); err != nil {
+			log.Printf("signal %v: flush failed: %v", sig, err)
+			os.Exit(1)
+		}
+		log.Printf("signal %v: flushed partial results", sig)
+		os.Exit(0)
+	}()
 
 	// Local model: spawn llama-server when a model path is set, otherwise
 	// probe LOCAL_BASE_URL for an externally managed server (dev mode).
@@ -96,7 +117,10 @@ func main() {
 		go func() {
 			defer wg.Done()
 			for j := range jobs {
-				results[j.idx].Answer = r.Answer(ctx, j.t)
+				answer := r.Answer(ctx, j.t)
+				resultsMu.Lock()
+				results[j.idx].Answer = answer
+				resultsMu.Unlock()
 			}
 		}()
 	}
