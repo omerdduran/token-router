@@ -29,7 +29,10 @@ func Check(cat classify.Category, prompt, answer string) bool {
 	case classify.Sentiment:
 		return reSentWord.MatchString(a)
 	case classify.Math:
-		return reNumeric.MatchString(a)
+		// Post-processing reduces a proper answer to its final line; a long
+		// answer here means the model never emitted 'Answer: <number>'
+		// (usually a truncated step dump) and must not pass.
+		return reNumeric.MatchString(a) && len(a) <= 60
 	case classify.NER:
 		// Expect at least one label-ish structure: "X (person)", "Person: X",
 		// a dash/bullet list, or JSON-ish output.

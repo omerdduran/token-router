@@ -59,10 +59,10 @@ func main() {
 				log.Printf("warn: local server failed, continuing remote-only: %v", err)
 			} else {
 				defer srv.Stop()
-				local = llm.NewClient(cfg.LocalBaseURL, "", cfg.RequestTimeout)
+				local = llm.NewClient(cfg.LocalBaseURL, "", cfg.LocalRequestTimeout)
 			}
 		} else if probeHealth(startupCtx, cfg.LocalBaseURL) {
-			local = llm.NewClient(cfg.LocalBaseURL, "", cfg.RequestTimeout)
+			local = llm.NewClient(cfg.LocalBaseURL, "", cfg.LocalRequestTimeout)
 			log.Printf("using external local server at %s", cfg.LocalBaseURL)
 		} else {
 			log.Printf("warn: no local model configured and %s not healthy", cfg.LocalBaseURL)

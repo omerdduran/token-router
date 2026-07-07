@@ -26,9 +26,10 @@ type Config struct {
 	LocalParallel  int
 	LocalThreads   int
 
-	Workers        int
-	TotalBudget    time.Duration // hard cap is 10min; keep a safety margin
-	RequestTimeout time.Duration // per-request cap is 30s; keep a margin
+	Workers             int
+	TotalBudget         time.Duration // hard cap is 10min; keep a safety margin
+	RequestTimeout      time.Duration // remote per-request cap is 30s; keep a margin
+	LocalRequestTimeout time.Duration // local calls only race the total budget
 
 	DisableLocal  bool
 	DisableRemote bool
@@ -50,9 +51,10 @@ func FromEnv() *Config {
 		LocalParallel:  envInt("LOCAL_PARALLEL", 4),
 		LocalThreads:   envInt("LOCAL_THREADS", 0), // 0 = llama-server default (all cores)
 
-		Workers:        envInt("WORKERS", 4),
-		TotalBudget:    envDur("TOTAL_BUDGET", 9*time.Minute+15*time.Second),
-		RequestTimeout: envDur("REQUEST_TIMEOUT", 25*time.Second),
+		Workers:             envInt("WORKERS", 4),
+		TotalBudget:         envDur("TOTAL_BUDGET", 9*time.Minute+15*time.Second),
+		RequestTimeout:      envDur("REQUEST_TIMEOUT", 25*time.Second),
+		LocalRequestTimeout: envDur("LOCAL_REQUEST_TIMEOUT", 90*time.Second),
 
 		DisableLocal:  envBool("DISABLE_LOCAL", false),
 		DisableRemote: envBool("DISABLE_REMOTE", false),

@@ -47,9 +47,17 @@ func (r *Router) selfConsistent(ctx context.Context, cat classify.Category, prom
 		counts[key] = append(counts[key], v)
 	}
 	need := len(votes)/2 + 1
-	for _, group := range counts {
+	if cat == classify.Logic {
+		// Logic is the local model's weakest category (5/8 on eval) and a
+		// confidently-wrong majority is common; demand unanimity to stay local.
+		need = len(votes)
+	}
+	for key, group := range counts {
 		if len(group) >= need {
-			return group[0], true // return the raw form of a majority member
+			if cat == classify.Math {
+				return key, true // the normalized number IS the answer
+			}
+			return group[0], true // raw form of a majority member
 		}
 	}
 	return greedy, false

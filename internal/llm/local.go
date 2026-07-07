@@ -38,6 +38,9 @@ func StartLocal(ctx context.Context, opts LocalOptions) (*LocalServer, error) {
 		"-c", strconv.Itoa(opts.CtxSize),
 		"--parallel", strconv.Itoa(opts.Parallel),
 		"--no-webui",
+		// Thinking burns the whole max_tokens budget inside reasoning_content
+		// and leaves content empty; we prompt explicit CoT where needed instead.
+		"--reasoning", "off",
 	}
 	if opts.Threads > 0 {
 		args = append(args, "-t", strconv.Itoa(opts.Threads))

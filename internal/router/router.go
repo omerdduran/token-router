@@ -162,7 +162,15 @@ func wrapCode(code string) string {
 
 var reBareExpr = regexp.MustCompile(`^[\s\d,.$+\-*/^()×÷%]+[?.\s]*$`)
 
+// reMultiQuantity flags questions asking for more than one value ("how many
+// chickens and how many rabbits") — a single arithmetic expression cannot
+// answer those, and a confident wrong number would bypass escalation.
+var reMultiQuantity = regexp.MustCompile(`(?i)how (many|much) .{0,60}\band\b .{0,60}(how (many|much)|are there)|\?.*\?`)
+
 func (r *Router) tryDeterministicMath(ctx context.Context, prompt string) (string, bool) {
+	if reMultiQuantity.MatchString(prompt) {
+		return "", false
+	}
 	// Case 1: the prompt essentially IS an expression ("What is 15*(3+2)?").
 	stripped := stripMathPreamble(prompt)
 	if reBareExpr.MatchString(stripped) {
@@ -207,12 +215,17 @@ func (r *Router) localChat(ctx context.Context, cat classify.Category, prompt, c
 	if corrective != "" {
 		sys += " " + corrective
 	}
-	resp, err := r.Local.Chat(ctx, llm.ChatRequest{
+	req := llm.ChatRequest{
 		Model:       "local",
 		Messages:    []llm.Message{{Role: "system", Content: sys}, {Role: "user", Content: prompt}},
 		MaxTokens:   localMaxTokens[cat],
 		Temperature: 0,
-	})
+	}
+	resp, err := r.Local.Chat(ctx, req)
+	if err != nil && ctx.Err() == nil {
+		// Transient failure (slot contention timeout): one retry is free.
+		resp, err = r.Local.Chat(ctx, req)
+	}
 	if err != nil {
 		return "", err
 	}

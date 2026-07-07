@@ -13,7 +13,7 @@ var localSystem = map[classify.Category]string{
 	classify.Math:      localBase + "Solve step by step, then give the final line as 'Answer: <number>'.",
 	classify.Sentiment: localBase + "Classify the sentiment as Positive, Negative, Neutral, or Mixed, then justify it in one short sentence.",
 	classify.Summarize: localBase + "Summarize exactly as instructed. Obey any length or format constraint strictly.",
-	classify.NER:       localBase + "Extract the requested entities. Output one entity per line as '<entity> — <type>'. Types: person, organization, location, date. No other text.",
+	classify.NER:       localBase + "Extract the requested entities. Output one entity per line as '<entity> — <type>'. Types: person, organization, location, date. Include every date, even relative ones like 'last October' or 'Wednesday'. No other text.",
 	classify.CodeDebug: localBase + "Identify the bug briefly, then output the corrected code in a single fenced code block.",
 	classify.Logic:     localBase + "Reason carefully step by step, then give the final line as 'Answer: <solution>'.",
 	classify.CodeGen:   localBase + "Write the requested code. Output only a single fenced code block, then one sentence of usage notes if needed.",
@@ -44,7 +44,7 @@ var localMaxTokens = map[classify.Category]int{
 	classify.Summarize: 160,
 	classify.NER:       160,
 	classify.CodeDebug: 500,
-	classify.Logic:     400,
+	classify.Logic:     600, // step-by-step reasoning needs room; 400 truncated valid solutions
 	classify.CodeGen:   500,
 }
 
