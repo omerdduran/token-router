@@ -17,53 +17,53 @@ import (
 const fallbackAnswer = "Unable to determine the answer."
 
 // Router implements the 3-layer strategy: deterministic solvers first (zero
-// tokens), then the bundled local model (zero scored tokens), and only
-// verified failures escalate to Fireworks (scored tokens).
+// tokens), then the bundled local model with proof-based verification (zero
+// scored tokens), and only unproven answers escalate to Fireworks (scored).
 type Router struct {
 	Local *llm.Client    // nil when local inference is unavailable
 	FW    *llm.Fireworks // nil when remote is disabled (dev/offline)
 }
 
+// escalateMaxPromptChars gates escalation by input size: remote input tokens
+// are scored, so shipping a long passage (summarization!) to Fireworks costs
+// more than the accuracy it could buy. ~4 chars/token → 2400 chars ≈ 600 tok.
+const escalateMaxPromptChars = 2400
+
 func (r *Router) Answer(ctx context.Context, t task.Task) string {
 	cat := classify.Classify(t.Prompt)
+	trace := &decisionTrace{id: t.ID, cat: cat}
+	defer trace.emit()
 
 	// Layer 0: word problem → expression → exact evaluation in Go.
 	if cat == classify.Math {
 		if ans, ok := r.tryDeterministicMath(ctx, t.Prompt); ok {
+			trace.layer = "deterministic"
 			return ans
 		}
 	}
 
-	// Layer 1: local model with a format-scaffolded prompt.
-	var localAns string
+	// Layer 1: local model.
+	var best string
 	if r.Local != nil {
-		if ans, err := r.localChat(ctx, cat, t.Prompt, ""); err == nil {
-			localAns = postprocess(cat, ans)
-			if r.verified(ctx, cat, t.Prompt, localAns) {
-				return localAns
-			}
-			// One corrective retry: free, and fixes most format slips.
-			if ans2, err2 := r.localChat(ctx, cat, t.Prompt,
-				"Your previous answer failed a format check. Follow the required output format exactly."); err2 == nil {
-				a2 := postprocess(cat, ans2)
-				if r.verified(ctx, cat, t.Prompt, a2) {
-					return a2
-				}
-				if localAns == "" {
-					localAns = a2
-				}
-			}
-		} else {
-			log.Printf("task %s: local error: %v", t.ID, err)
+		ans, proven := r.answerLocal(ctx, cat, t.Prompt, trace)
+		if proven {
+			trace.layer = "local"
+			return ans
 		}
+		best = ans
 	}
 
-	// Layer 2: escalate to Fireworks.
+	// Layer 2: escalate — unless the input is so long that remote input
+	// tokens outweigh the plausible accuracy gain.
 	if r.FW != nil {
+		if len(t.Prompt) > escalateMaxPromptChars && best != "" {
+			trace.layer = "local-forced"
+			trace.note = "escalation skipped: long input"
+			return best
+		}
 		if ans, err := r.remoteChat(ctx, cat, t.Prompt); err == nil {
-			a := postprocess(cat, ans)
-			if a != "" {
-				log.Printf("task %s: escalated (%s)", t.ID, cat)
+			if a := postprocess(cat, ans); a != "" {
+				trace.layer = "remote"
 				return a
 			}
 		} else {
@@ -71,16 +71,96 @@ func (r *Router) Answer(ctx context.Context, t task.Task) string {
 		}
 	}
 
-	if localAns != "" {
-		return localAns // unverified local beats nothing
+	trace.layer = "local-unproven"
+	if best != "" {
+		return best
 	}
 	return fallbackAnswer
+}
+
+// answerLocal produces the best local answer and reports whether it is
+// "proven": verified by execution, consistency vote, or format checks strict
+// enough for its category. Unproven answers are escalation candidates.
+func (r *Router) answerLocal(ctx context.Context, cat classify.Category, prompt string, trace *decisionTrace) (string, bool) {
+	ans, err := r.localChat(ctx, cat, prompt, "")
+	if err != nil {
+		log.Printf("local error: %v", err)
+		return "", false
+	}
+	ans = postprocess(cat, ans)
+
+	switch cat {
+	case classify.CodeGen, classify.CodeDebug:
+		return r.proveCode(ctx, prompt, ans, trace)
+
+	case classify.Math, classify.Logic:
+		if !verify.Check(cat, prompt, ans) {
+			return ans, false
+		}
+		// Free extra samples; require a 2/3 majority on the final answer.
+		voted, ok := r.selfConsistent(ctx, cat, prompt, ans)
+		trace.consistency = ok
+		return voted, ok
+
+	default: // factual, sentiment, summarize, ner
+		if verify.Check(cat, prompt, ans) {
+			return ans, true
+		}
+		// One corrective retry fixes most format slips, free of charge.
+		if ans2, err2 := r.localChat(ctx, cat, prompt,
+			"Your previous answer failed a format check. Follow the required output format exactly."); err2 == nil {
+			a2 := postprocess(cat, ans2)
+			if verify.Check(cat, prompt, a2) {
+				trace.retried = true
+				return a2, true
+			}
+		}
+		return ans, false
+	}
+}
+
+// proveCode runs the syntax gate, then self-generated tests, then one free
+// repair round with the failure fed back (CodeT-style acceptance).
+func (r *Router) proveCode(ctx context.Context, prompt, ans string, trace *decisionTrace) (string, bool) {
+	code := solve.ExtractCode(ans)
+	if code == "" {
+		return ans, false
+	}
+	if looksLikePython(prompt, code) {
+		sctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+		err := solve.CheckPythonSyntax(sctx, code)
+		cancel()
+		if err != nil {
+			return ans, false
+		}
+	}
+	passed, tested := r.verifyCodeByTests(ctx, prompt, code)
+	trace.codeTested = tested
+	if !tested {
+		// No tests derivable: syntax-clean code is our best local evidence.
+		// Treat as proven for debug tasks (original code as spec), unproven
+		// for generation, where silent logic errors are likelier.
+		return ans, trace.cat == classify.CodeDebug
+	}
+	if passed {
+		return ans, true
+	}
+	if fixed, err := r.repairCode(ctx, prompt, code, "self-generated assert failed"); err == nil && fixed != "" {
+		if passed2, tested2 := r.verifyCodeByTests(ctx, prompt, fixed); tested2 && passed2 {
+			trace.retried = true
+			return wrapCode(fixed), true
+		}
+	}
+	return ans, false
+}
+
+func wrapCode(code string) string {
+	return "```python\n" + code + "\n```"
 }
 
 // --- Layer 0: deterministic math ---
 
 var reBareExpr = regexp.MustCompile(`^[\s\d,.$+\-*/^()×÷%]+[?.\s]*$`)
-var reExprInPrompt = regexp.MustCompile(`\d[\d,.\s]*(?:[+\-*/^×÷]\s*[\d(][\d,.\s()+\-*/^×÷]*)+`)
 
 func (r *Router) tryDeterministicMath(ctx context.Context, prompt string) (string, bool) {
 	// Case 1: the prompt essentially IS an expression ("What is 15*(3+2)?").
@@ -120,7 +200,7 @@ func stripMathPreamble(p string) string {
 	return reMathPreamble.ReplaceAllString(strings.TrimSpace(p), "")
 }
 
-// --- Layer 1: local ---
+// --- Layer 1: local chat ---
 
 func (r *Router) localChat(ctx context.Context, cat classify.Category, prompt, corrective string) (string, error) {
 	sys := localSystem[cat]
@@ -137,24 +217,6 @@ func (r *Router) localChat(ctx context.Context, cat classify.Category, prompt, c
 		return "", err
 	}
 	return resp.Content, nil
-}
-
-// verified runs the cheap static checks plus, for code, a real syntax gate.
-func (r *Router) verified(ctx context.Context, cat classify.Category, prompt, answer string) bool {
-	if !verify.Check(cat, prompt, answer) {
-		return false
-	}
-	if cat == classify.CodeGen || cat == classify.CodeDebug {
-		code := solve.ExtractCode(answer)
-		if looksLikePython(prompt, code) {
-			cctx, cancel := context.WithTimeout(ctx, 8*time.Second)
-			defer cancel()
-			if err := solve.CheckPythonSyntax(cctx, code); err != nil {
-				return false
-			}
-		}
-	}
-	return true
 }
 
 func looksLikePython(prompt, code string) bool {
@@ -199,7 +261,7 @@ func (r *Router) remoteChat(ctx context.Context, cat classify.Category, prompt s
 	return resp.Content, nil
 }
 
-// --- postprocessing ---
+// --- postprocessing & tracing ---
 
 var reAnswerLine = regexp.MustCompile(`(?im)^answer:\s*(.+)$`)
 
@@ -213,4 +275,33 @@ func postprocess(cat classify.Category, s string) string {
 		}
 	}
 	return s
+}
+
+// decisionTrace logs one line per task: which layer answered and why. This
+// is the audit trail for eval debugging and the demo.
+type decisionTrace struct {
+	id          string
+	cat         classify.Category
+	layer       string
+	consistency bool
+	retried     bool
+	codeTested  bool
+	note        string
+}
+
+func (d *decisionTrace) emit() {
+	parts := []string{"task " + d.id, "cat=" + string(d.cat), "layer=" + d.layer}
+	if d.consistency {
+		parts = append(parts, "consistent")
+	}
+	if d.retried {
+		parts = append(parts, "retried")
+	}
+	if d.codeTested {
+		parts = append(parts, "code-tested")
+	}
+	if d.note != "" {
+		parts = append(parts, d.note)
+	}
+	log.Printf("%s", strings.Join(parts, " "))
 }
