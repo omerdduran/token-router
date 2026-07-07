@@ -4,3 +4,7 @@ models/
 output/
 .playwright-mcp/
 dist/
+
+# eval run outputs
+eval/out/
+eval/out-*/
