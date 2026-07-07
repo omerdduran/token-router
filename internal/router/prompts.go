@@ -39,6 +39,20 @@ var remoteStop = map[classify.Category][]string{
 	// Math, Logic, CodeGen, CodeDebug: no stop (reasoning/code contain newlines).
 }
 
+// Decoding grammars (GRAMMAR knob): constrain the completion so off-format
+// filler is impossible by construction. Fireworks accepts GBNF via
+// response_format {"type": "grammar"}. Only sentiment is constrained — its
+// answer shape (label + one sentence) is rigid enough to encode without
+// risking a truncated real answer.
+const sentimentGBNF = `root ::= ("Positive" | "Negative" | "Neutral" | "Mixed") (" " [-—:] " " [^\n]+)?`
+
+func grammarFor(cat classify.Category) map[string]any {
+	if cat == classify.Sentiment {
+		return map[string]any{"type": "grammar", "grammar": sentimentGBNF}
+	}
+	return nil
+}
+
 var remoteMaxTokens = map[classify.Category]int{
 	classify.Factual:   130,
 	classify.Math:      150,

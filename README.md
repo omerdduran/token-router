@@ -49,9 +49,9 @@ flowchart TD
 | Category | Strategy | Typical cost |
 |---|---|---|
 | Mathematical reasoning | Bare expr → Go eval; else PAL (model emits expression, Go computes) | 0 or ~20 tokens |
-| Logic / deductive | Ordering & syllogism solvers in Go; else one reasoning-model call | 0 or one call |
-| Code generation | One call → execute against prompt-derived asserts → specialist retry on failure | one call |
-| Code debugging | Same execution-based verification path | one call |
+| Logic / deductive | Ordering, syllogism, knights-and-knaves, zebra-grid, and positional-race solvers in Go; else one reasoning-model call | 0 or one call |
+| Code generation | Proven solution library (candidate must pass the prompt's own examples) → else one call → execute against prompt-derived asserts → specialist retry on failure | 0 or one call |
+| Code debugging | Mutation repair (single-edit mutants tested against prompt-derived asserts) → else the same execution-based verification path | 0 or one call |
 | Sentiment | Terse label prompt, tight cap | one call |
 | Factual knowledge | Terse "answer concisely" prompt | one call |
 | Named-entity recognition | Typed one-per-line format prompt | one call |
@@ -60,6 +60,10 @@ flowchart TD
 ## Token-efficiency techniques
 
 - **Plain-code solvers** — arithmetic AST evaluator, transitive-ordering (topological sort), universal syllogism (reachability). Correct by construction, zero tokens.
+- **Brute-force puzzle solvers** (`PUZZLE_SOLVERS`) — knights-and-knaves (2ⁿ truth assignments), zebra-style attribute grids ((n!)² assignments), positional races with offsets (n! permutations). Strictly self-gating: any unparsed clue or ambiguous solution defers to the model, so a hit is always right and a miss costs nothing.
+- **Mutation repair** (`MUTATION_REPAIR`) — debug tasks first try every single-edit mutant of the buggy code (flipped comparisons, off-by-ones, swapped operators) against asserts derived from the prompt's own examples. Answers only when the original provably fails and exactly one mutant passes — an APR-style fix for zero tokens.
+- **Proven solution library** (`SOLUTION_LIB`) — classic codegen tasks (fibonacci, palindromes, brackets…) are answered from embedded canonical implementations, but only after the candidate passes the prompt's stated examples. The library never guesses; conventions (0- vs 1-indexed fibonacci) ship as variants and the examples arbitrate.
+- **Duplicate-task dedup** (`DEDUP`) — normalized-identical prompts are answered once and copied; the same question is never paid for twice.
 - **PAL for math** — the model translates a word problem into an expression; Go does the arithmetic, so it can't be wrong and costs a fraction of a worked solution.
 - **Execution-based code verification** — asserts are derived from the prompt's stated examples and run locally; the paid specialist retry fires only when tests actually fail.
 - **Terse category prompts + per-category `max_tokens`** — every scored token is deliberate; no filler, no preamble.
@@ -67,6 +71,9 @@ flowchart TD
 - **Throughput-paced degradation** — a pacer projects the finish time against the 10-minute budget and gracefully reduces verification depth only under time pressure.
 - **Opt-in batching** (`BATCH_SIZE`) — short single-answer tasks share one call, paying the system prompt once; a parse shortfall falls back to individual calls so no answer is ever dropped.
 - **Opt-in stop sequences** (`STOP_SEQ`) — category-safe stops trim trailing filler from completions.
+- **Opt-in prompt compression** (`PROMPT_COMPRESS`) — the task's own text is billed too: level 1 strips politeness boilerplate, level 2 extractively trims long summarization passages before the call.
+- **Opt-in system-message merge** (`MERGE_SYSTEM`) — folds the system prompt into the user message, shaving the chat template's per-message role tokens.
+- **Opt-in grammar-constrained decoding** (`GRAMMAR`) — sentiment answers are decoded under a GBNF grammar, making filler tokens impossible by construction (with an unconstrained fallback so no answer is ever lost).
 - **Retry budget** (`RETRY_BUDGET`) — a global cap on paid second attempts, tunable between leaderboard probes.
 
 Every one of these was added under a **measure-first discipline**: applied in isolation, measured on a local eval, and kept only when it demonstrably helped. The run-by-run log lives in [`eval/PERF.md`](eval/PERF.md). Features whose real effect can only be seen against the live API (batching, stop sequences) ship **off by default** as tunable knobs until validated.
@@ -120,7 +127,16 @@ The image is just the Go binary plus `python3` (used to execute and verify gener
 | `RETRY_BUDGET` | `-1` | Max paid retries (`-1` = unlimited) |
 | `BATCH_SIZE` | `0` | Batch short tasks per call (`0` = off) |
 | `STOP_SEQ` | `false` | Category stop sequences |
+| `PUZZLE_SOLVERS` | `true` | Brute-force knights/zebra/position solvers |
+| `MUTATION_REPAIR` | `true` | Single-edit repair of buggy code before a debug call |
+| `SOLUTION_LIB` | `true` | Canonical solutions proven against prompt examples |
+| `DEDUP` | `true` | Answer duplicate prompts once |
+| `PROMPT_COMPRESS` | `0` | Input compression level (`0` off, `1` boilerplate, `2` +extractive) |
+| `MERGE_SYSTEM` | `false` | Fold system prompt into the user message |
+| `GRAMMAR` | `false` | GBNF-constrained sentiment decoding |
 | `INPUT_PATH` / `OUTPUT_PATH` | `/input/tasks.json` / `/output/results.json` | Contract paths |
+
+Components whose correctness is provable offline (self-gating solvers, proof-gated repair/library, dedup) default **on**; components whose effect depends on the live judge or tokenizer (compression, system merge, grammar) default **off** and wait in the submission-ladder queue for a live A/B.
 
 ## Development & evaluation
 
@@ -149,8 +165,10 @@ Three eval sets exercise different pressures: `tasks.json` (baseline, 8×8), `ha
 cmd/agent          entrypoint: contract I/O, worker pool, batching pre-pass
 cmd/classcheck     standalone classifier-accuracy measurement tool
 internal/classify  category classifier (lexical, scored)
+internal/compress  opt-in prompt compression (boilerplate strip, extractive trim)
 internal/router    routing, verification, PAL, batching, pacer, prompts
-internal/solve     plain-code solvers: arithmetic, ordering, syllogism, code execution
+internal/solve     plain-code solvers: arithmetic, ordering, syllogism, puzzles,
+                   mutation repair, solution library, code execution
 internal/llm       OpenAI-compatible client + Fireworks model selection & token accounting
 internal/verify    cheap category output checks
 internal/config    environment configuration

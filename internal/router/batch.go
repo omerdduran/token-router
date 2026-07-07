@@ -37,17 +37,14 @@ func (r *Router) AnswerBatch(ctx context.Context, cat classify.Category, prompts
 	}
 	var sb strings.Builder
 	for i, p := range prompts {
-		fmt.Fprintf(&sb, "%d. %s\n", i+1, strings.TrimSpace(p))
+		fmt.Fprintf(&sb, "%d. %s\n", i+1, strings.TrimSpace(r.compress(cat, p)))
 	}
 	role := llm.RoleGeneral
 	if cat == classify.Logic {
 		role = llm.RoleStrong
 	}
 	resp, err := r.FW.Chat(ctx, role, llm.ChatRequest{
-		Messages: []llm.Message{
-			{Role: "system", Content: remoteSystem[cat] + batchInstruction},
-			{Role: "user", Content: sb.String()},
-		},
+		Messages:    r.messages(remoteSystem[cat]+batchInstruction, sb.String()),
 		MaxTokens:   remoteMaxTokens[cat]*len(prompts) + 32,
 		Temperature: 0,
 	})

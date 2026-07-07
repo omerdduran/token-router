@@ -31,6 +31,45 @@ type Config struct {
 	// StopSeqs trims trailing filler via category stop sequences. Off until
 	// measured live (accuracy effect can't be seen on a canned mock).
 	StopSeqs bool
+
+	// --- Experimental components. Each is a self-contained toggle so every
+	// one can be A/B-tested against the live Fireworks endpoint in isolation.
+	// Defaults follow the local-proof rule: components whose correctness is
+	// provable offline (self-gating solvers, behavior-identical caching) ship
+	// on; components whose effect depends on the live judge/tokenizer ship
+	// off until measured.
+
+	// PuzzleSolvers enables the brute-force logic solvers (knights-and-knaves,
+	// zebra-style attribute grids, positional races). Proof-safe: they answer
+	// only when every sentence parses and the solution is unique.
+	PuzzleSolvers bool
+
+	// PromptCompress trims scored input tokens before the API call.
+	// 0 = off, 1 = strip boilerplate/politeness, 2 = also extractively trim
+	// long summarization passages. Judge tolerance is a live-only measurement.
+	PromptCompress int
+
+	// MergeSystem folds the system prompt into the user message, shaving the
+	// chat template's per-message role scaffolding tokens. Live-only A/B.
+	MergeSystem bool
+
+	// MutationRepair tries single-edit mutations of buggy code against
+	// prompt-derived asserts before paying for a debug call. Proof-gated:
+	// answers only when the original fails and exactly one mutant passes.
+	MutationRepair bool
+
+	// SolutionLib matches classic codegen tasks against canonical solutions
+	// and answers only after the candidate passes the prompt's own examples.
+	SolutionLib bool
+
+	// Dedup answers duplicate (normalized-identical) prompts once and copies
+	// the answer. Behavior-identical, zero risk.
+	Dedup bool
+
+	// Grammar constrains sentiment decoding with a GBNF grammar so filler
+	// tokens are impossible by construction. Live-only A/B (the mock and
+	// llama-server ignore/vary on the response_format field).
+	Grammar bool
 }
 
 func FromEnv() *Config {
@@ -49,6 +88,14 @@ func FromEnv() *Config {
 		RetryBudget: envInt("RETRY_BUDGET", -1),
 		BatchSize:   envInt("BATCH_SIZE", 0),
 		StopSeqs:    envBool("STOP_SEQ", false),
+
+		PuzzleSolvers:  envBool("PUZZLE_SOLVERS", true),
+		PromptCompress: envInt("PROMPT_COMPRESS", 0),
+		MergeSystem:    envBool("MERGE_SYSTEM", false),
+		MutationRepair: envBool("MUTATION_REPAIR", true),
+		SolutionLib:    envBool("SOLUTION_LIB", true),
+		Dedup:          envBool("DEDUP", true),
+		Grammar:        envBool("GRAMMAR", false),
 	}
 }
 

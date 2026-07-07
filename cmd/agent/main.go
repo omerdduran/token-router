@@ -5,6 +5,8 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"regexp"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -15,6 +17,13 @@ import (
 	"tokenrouter/internal/router"
 	"tokenrouter/internal/task"
 )
+
+var reWS = regexp.MustCompile(`\s+`)
+
+// normalizePrompt is the dedup key: case- and whitespace-insensitive.
+func normalizePrompt(s string) string {
+	return reWS.ReplaceAllString(strings.ToLower(strings.TrimSpace(s)), " ")
+}
 
 func main() {
 	log.SetOutput(os.Stderr)
@@ -72,7 +81,35 @@ func main() {
 		cfg.AllowedModels,
 	)
 	deadline, _ := ctx.Deadline()
-	r := router.New(fw, router.NewPacer(deadline, len(tasks)), cfg.RetryBudget, cfg.StopSeqs)
+	r := router.New(fw, router.NewPacer(deadline, len(tasks)), router.Options{
+		RetryBudget:    cfg.RetryBudget,
+		StopSeqs:       cfg.StopSeqs,
+		PuzzleSolvers:  cfg.PuzzleSolvers,
+		PromptCompress: cfg.PromptCompress,
+		MergeSystem:    cfg.MergeSystem,
+		MutationRepair: cfg.MutationRepair,
+		SolutionLib:    cfg.SolutionLib,
+		Grammar:        cfg.Grammar,
+	})
+
+	// Dedup pre-pass: normalized-identical prompts are answered once; the
+	// duplicates get a copy at the end. Never pay twice for the same question.
+	dupOf := map[int]int{} // duplicate index → representative index
+	if cfg.Dedup {
+		firstByKey := map[string]int{}
+		for i, t := range tasks {
+			key := normalizePrompt(t.Prompt)
+			if j, seen := firstByKey[key]; seen {
+				dupOf[i] = j
+				r.Pace.TaskDone() // no work will be spent on this task
+			} else {
+				firstByKey[key] = i
+			}
+		}
+		if len(dupOf) > 0 {
+			log.Printf("dedup: %d duplicate task(s) will reuse answers", len(dupOf))
+		}
+	}
 
 	// Batch pre-pass (opt-in): group short single-answer tasks so the system
 	// prompt is paid once per batch instead of once per task. Free-solvable
@@ -81,6 +118,9 @@ func main() {
 	if cfg.BatchSize > 0 {
 		buckets := map[classify.Category][]int{}
 		for i, t := range tasks {
+			if _, isDup := dupOf[i]; isDup {
+				continue
+			}
 			cat, _ := classify.ClassifyScored(t.Prompt)
 			if !router.Batchable(cat, t.Prompt) {
 				individual = append(individual, i)
@@ -119,7 +159,9 @@ func main() {
 		}
 	} else {
 		for i := range tasks {
-			individual = append(individual, i)
+			if _, isDup := dupOf[i]; !isDup {
+				individual = append(individual, i)
+			}
 		}
 	}
 
@@ -143,6 +185,13 @@ func main() {
 	}
 	close(jobs)
 	wg.Wait()
+
+	// Fill duplicates from their representatives (answered by now).
+	resultsMu.Lock()
+	for i, j := range dupOf {
+		results[i].Answer = results[j].Answer
+	}
+	resultsMu.Unlock()
 
 	if err := task.WriteAtomic(cfg.OutputPath, results); err != nil {
 		log.Printf("fatal: final write: %v", err)

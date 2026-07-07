@@ -78,5 +78,74 @@ bozmuyor. Birim test: NER/kod'da asla `\n` stop'u yok (truncation koruması).
 gerçek completion-token azalması ve olası truncation-accuracy etkisi yalnızca canlıda
 ölçülür. Ladder knob; canlıda token↓ + accuracy korunursa varsayılan açık yapılacak.
 
-**Canlı ölçüm kuyruğu:** `BATCH_SIZE`, `STOP_SEQ`, thinking-off — üçü de mock'ta accuracy
-ölçülemediği için varsayılan kapalı; ilk canlı Fireworks turunda birlikte A/B edilecek.
+## Deneysel component seti (2026-07-07 — 7 toggle'lı component)
+
+Hepsi ayrı `Options`/env toggle'ı; karar kuralı: **lokalde kanıtlanabilen açık,
+canlı judge/tokenizer'a bağlı olan kapalı** (kod duruyor, ilk canlı turda A/B).
+
+### PUZZLE_SOLVERS — brute-force bulmaca çözücüler (varsayılan: AÇIK)
+
+`SolveKnights` (2^n doğruluk ataması), `SolveZebra` ((n!)² iki-nitelik atama,
+sorgu-hücresi tekilliği yeter — grid'in tamamı belirsiz olsa bile), `SolvePositions`
+(n! permütasyon; offset/bitişiklik — ordering çözücünün bilerek devrettiği şekiller).
+Katı self-gate: parse edilemeyen kısıt cümlesi veya çoklu çözüm → defer.
+
+| Set | Etki |
+|---|---|
+| hard.json | lh-1 (zebra) + lh-2 (knights) + lh-3 (pozisyon, factual'a yanlış sınıflanmışken kurtarıldı) → **0 token**; çağrı 24→21 |
+| tasks.json | değişiklik yok (60 çağrı birebir) — yanlış kapma yok |
+| paraphrased.json | değişiklik yok — güvenle deferliyor |
+
+Üç cevap da elle doğrulandı. **Karar: TUT, AÇIK** (proof-safe; en pahalı logic
+görevleri bedavalaştı).
+
+### MUTATION_REPAIR — tek-nokta mutasyonla debug onarımı (varsayılan: AÇIK)
+
+Kanıt kuralı: orijinal kod prompt'un kendi örneklerinden türetilen assert'lerde
+FAIL + tam olarak BİR mutant PASS → 0 token cevap; aksi (assert yok / orijinal
+geçiyor / birden çok mutant geçiyor / süre doldu) → defer. Birim testler:
+`range(1,n)→range(1,n+1)` ve `a-b→a+b` onarıldı; üç defer senaryosu doğrulandı.
+Eval debug görevlerinde örnek yok → hepsi defer (kapsam 0, risk 0 — mekanizma
+birim testle kanıtlı, değeri gizli setin örnek içermesine bağlı). **Karar: TUT,
+AÇIK** (proof-gated: yanlış cevap üretmesi yapısal olarak imkânsız).
+
+### SOLUTION_LIB — kanıtlı çözüm kütüphanesi (varsayılan: AÇIK)
+
+12 klasik (fibonacci ×2 konvansiyon, palindrom ×2, reverse, prime, gcd, anagram,
+brackets...) istenen fonksiyon adıyla render edilip prompt'un kendi örnekleriyle
+İSPATLANMADAN asla cevaplanmıyor. tasks.json code-4 (60→59 çağrı) + hard.json
+ch-2 (21→20 çağrı) kütüphaneden, testli. Örneksiz/yabancı-dilli/örneği çelişen
+görevler defer (birim testli). **Karar: TUT, AÇIK.**
+
+### DEDUP — görev tekilleştirme (varsayılan: AÇIK)
+
+Normalize (lowercase+whitespace) birebir kopyalar temsilciden kopyalanır.
+Sentetik 6 görevlik set (3 kopya): 2 çağrı, kopya cevaplar özdeş ve dolu.
+Eval setlerinde kopya yok → etkisiz ve risksiz. **Karar: TUT, AÇIK.**
+
+### PROMPT_COMPRESS — girdi sıkıştırma (varsayılan: 0 = KAPALI)
+
+Seviye 1 nezaket/boilerplate temizliği, seviye 2 + uzun özet pasajında extractive
+cümle seçimi (talimat + lead her zaman korunur; dejenere çıktıda orijinale döner).
+Birim testli; **judge toleransı yalnızca canlıda ölçülür** → kapalı bekliyor.
+
+### MERGE_SYSTEM — chat şablonu tıraşlama (varsayılan: KAPALI)
+
+System mesajı user'a gömülür → mesaj başına şablon rol-token'ları kırpılır.
+Birim test + mock regresyonu temiz (mock'un canned eşleşmesi system'e bakıyordu;
+merge modunda user'a da bakacak şekilde düzeltildi — mock artefaktıydı, gerçek
+endpoint talimatı rolden bağımsız okur). Kazanç canlı tokenizer'da görünür → kapalı.
+
+### GRAMMAR — kısıtlı decoding (varsayılan: KAPALI)
+
+Sentiment'e GBNF (`response_format {type: grammar}`): dolgu token'ı üretimi
+yapısal olarak imkânsız. Alan yalnızca set'liyken gövdeye yazılıyor (httptest ile
+kanıtlı); hata halinde kısıtsız tek retry → cevap kaybı imkânsız. Mock alanı yok
+sayar → etki canlıda ölçülür → kapalı.
+
+**Kombinasyon dumanı:** PROMPT_COMPRESS=2 + MERGE_SYSTEM=1 + GRAMMAR=1 + STOP_SEQ=1
++ BATCH_SIZE=8, tasks.json → 45 çağrı, 64/64 dolu cevap, hata 0.
+
+**Canlı ölçüm kuyruğu:** `BATCH_SIZE`, `STOP_SEQ`, `PROMPT_COMPRESS`,
+`MERGE_SYSTEM`, `GRAMMAR`, thinking-off — hepsi mock'ta accuracy ölçülemediği
+için varsayılan kapalı; ilk canlı Fireworks turunda tek tek A/B edilecek.

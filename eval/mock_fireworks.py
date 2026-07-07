@@ -40,6 +40,10 @@ class Handler(BaseHTTPRequestHandler):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         sys_msg = next((m["content"] for m in body["messages"] if m["role"] == "system"), "")
         user = next((m["content"] for m in body["messages"] if m["role"] == "user"), "")
+        if not sys_msg:
+            # MERGE_SYSTEM mode folds the instruction into the user message;
+            # a real endpoint reads it regardless of role, so match on it too.
+            sys_msg = user
         content = canned(sys_msg, user)
         prompt_toks = max(1, (len(sys_msg) + len(user)) // 4)
         completion_toks = max(1, len(content) // 4)

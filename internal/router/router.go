@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"tokenrouter/internal/classify"
+	"tokenrouter/internal/compress"
 	"tokenrouter/internal/llm"
 	"tokenrouter/internal/solve"
 	"tokenrouter/internal/task"
@@ -27,7 +28,7 @@ type Router struct {
 	FW   *llm.Fireworks
 	Pace *Pacer // nil → always ModeFull
 
-	stopSeqs bool // apply category stop sequences to trim trailing filler
+	opt Options
 
 	// retryBudget caps second-attempt calls across the whole run (-1 =
 	// unlimited). The submission-ladder knob: step it down between
@@ -35,18 +36,43 @@ type Router struct {
 	retryBudget atomic.Int64
 }
 
-func New(fw *llm.Fireworks, pace *Pacer, retryBudget int, stopSeqs bool) *Router {
-	r := &Router{FW: fw, Pace: pace, stopSeqs: stopSeqs}
-	r.retryBudget.Store(int64(retryBudget))
+// Options collects the toggleable components. Every experimental feature is a
+// separate switch so each can be A/B-tested in isolation against the live
+// endpoint and disabled without touching code.
+type Options struct {
+	RetryBudget int  // paid-retry cap across the run (-1 = unlimited)
+	StopSeqs    bool // category stop sequences trim trailing filler
+
+	PuzzleSolvers  bool // brute-force knights/zebra/position solvers (0 tokens)
+	PromptCompress int  // 0=off, 1=strip boilerplate, 2=+extractive passage trim
+	MergeSystem    bool // fold system prompt into the user message
+	MutationRepair bool // single-edit repair of buggy code before a debug call
+	SolutionLib    bool // canonical solutions proven against prompt examples
+	Grammar        bool // GBNF-constrained sentiment decoding
+}
+
+func New(fw *llm.Fireworks, pace *Pacer, opt Options) *Router {
+	r := &Router{FW: fw, Pace: pace, opt: opt}
+	r.retryBudget.Store(int64(opt.RetryBudget))
 	return r
 }
 
 // stopFor returns the category's stop sequences when the feature is enabled.
 func (r *Router) stopFor(cat classify.Category) []string {
-	if !r.stopSeqs {
+	if !r.opt.StopSeqs {
 		return nil
 	}
 	return remoteStop[cat]
+}
+
+// messages assembles the chat messages, folding the system prompt into the
+// user message when MergeSystem is on — one message means one set of chat
+// template role headers instead of two, and every template token is scored.
+func (r *Router) messages(sys, user string) []llm.Message {
+	if r.opt.MergeSystem {
+		return []llm.Message{{Role: "user", Content: sys + "\n\n" + user}}
+	}
+	return []llm.Message{{Role: "system", Content: sys}, {Role: "user", Content: user}}
 }
 
 // allowRetry spends one unit of retry budget if any is left.
@@ -125,6 +151,17 @@ func (r *Router) TrySolveFree(cat classify.Category, prompt string) (string, boo
 	if ans, ok := solve.SolveSyllogism(prompt); ok {
 		return ans, true
 	}
+	if r.opt.PuzzleSolvers {
+		if ans, ok := solve.SolveKnights(prompt); ok {
+			return ans, true
+		}
+		if ans, ok := solve.SolveZebra(prompt); ok {
+			return ans, true
+		}
+		if ans, ok := solve.SolvePositions(prompt); ok {
+			return ans, true
+		}
+	}
 	return "", false
 }
 
@@ -152,11 +189,11 @@ func solveBareExpression(prompt string) (string, bool) {
 // isn't expressible.
 func (r *Router) mathPAL(ctx context.Context, prompt string, trace *decisionTrace) (string, error) {
 	var palStop []string
-	if r.stopSeqs {
+	if r.opt.StopSeqs {
 		palStop = []string{"\n"} // the expression is one line by construction
 	}
 	resp, err := r.FW.Chat(ctx, llm.RoleGeneral, llm.ChatRequest{
-		Messages:    []llm.Message{{Role: "system", Content: palSystem}, {Role: "user", Content: prompt}},
+		Messages:    r.messages(palSystem, r.compress(classify.Math, prompt)),
 		MaxTokens:   60,
 		Temperature: 0,
 		Stop:        palStop,
@@ -177,6 +214,26 @@ func (r *Router) mathPAL(ctx context.Context, prompt string, trace *decisionTrac
 // --- Layer 1: code with free execution-based verification ---
 
 func (r *Router) code(ctx context.Context, cat classify.Category, prompt string, trace *decisionTrace) (string, error) {
+	// Zero-token attempts first — both are proof-gated (they answer only
+	// after passing the prompt's own examples), so a hit can't be wrong and
+	// a miss costs nothing.
+	if r.opt.SolutionLib && cat == classify.CodeGen && looksLikePython(prompt, "def ") {
+		if code, ok := solve.LibrarySolve(ctx, prompt); ok {
+			trace.layer = "library"
+			trace.codeTested = true
+			return code, nil
+		}
+	}
+	if r.opt.MutationRepair && cat == classify.CodeDebug && looksLikePython(prompt, "def ") {
+		if buggy := solve.ExtractPromptCode(prompt); buggy != "" {
+			if fixed, desc, ok := solve.RepairPython(ctx, buggy, solve.DeriveAsserts(prompt)); ok {
+				trace.layer = "mutate"
+				trace.codeTested = true
+				return desc + "\n\n" + fixed, nil
+			}
+		}
+	}
+
 	ans, err := r.call(ctx, llm.RoleStrong, cat, false, prompt)
 	if err != nil {
 		return "", err
@@ -266,8 +323,8 @@ func (r *Router) call(ctx context.Context, role llm.Role, cat classify.Category,
 	if generic {
 		sys, maxTok = genericSystem, genericMaxTokens
 	}
-	resp, err := r.FW.Chat(ctx, role, llm.ChatRequest{
-		Messages:    []llm.Message{{Role: "system", Content: sys}, {Role: "user", Content: prompt}},
+	resp, err := r.chatConstrained(ctx, role, cat, generic, llm.ChatRequest{
+		Messages:    r.messages(sys, r.compress(cat, prompt)),
 		MaxTokens:   maxTok,
 		Temperature: 0,
 		Stop:        r.stopFor(cat),
@@ -281,11 +338,8 @@ func (r *Router) call(ctx context.Context, role llm.Role, cat classify.Category,
 }
 
 func (r *Router) callWithNudge(ctx context.Context, role llm.Role, cat classify.Category, prompt string) (string, error) {
-	resp, err := r.FW.Chat(ctx, role, llm.ChatRequest{
-		Messages: []llm.Message{
-			{Role: "system", Content: remoteSystem[cat] + " Follow the required output format exactly."},
-			{Role: "user", Content: prompt},
-		},
+	resp, err := r.chatConstrained(ctx, role, cat, false, llm.ChatRequest{
+		Messages:    r.messages(remoteSystem[cat]+" Follow the required output format exactly.", r.compress(cat, prompt)),
 		MaxTokens:   remoteMaxTokens[cat],
 		Temperature: 0,
 		Stop:        r.stopFor(cat),
@@ -294,6 +348,35 @@ func (r *Router) callWithNudge(ctx context.Context, role llm.Role, cat classify.
 		return "", err
 	}
 	return postprocess(cat, resp.Content), nil
+}
+
+// chatConstrained sends the request, attaching a decoding grammar where one
+// is configured for the category. A grammar makes filler tokens impossible by
+// construction — stronger than a stop sequence, which only cuts the overflow
+// after it is generated. If the constrained request errors (endpoints vary in
+// response_format support), it retries once unconstrained so the feature can
+// never lose an answer.
+func (r *Router) chatConstrained(ctx context.Context, role llm.Role, cat classify.Category, generic bool, req llm.ChatRequest) (*llm.ChatResponse, error) {
+	if r.opt.Grammar && !generic {
+		if rf := grammarFor(cat); rf != nil {
+			req.ResponseFormat = rf
+			resp, err := r.FW.Chat(ctx, role, req)
+			if err == nil {
+				return resp, nil
+			}
+			req.ResponseFormat = nil // unsupported/rejected → plain retry
+		}
+	}
+	return r.FW.Chat(ctx, role, req)
+}
+
+// compress applies the PROMPT_COMPRESS level to text bound for the API. The
+// original prompt is untouched for classification and the free solvers.
+func (r *Router) compress(cat classify.Category, prompt string) string {
+	if r.opt.PromptCompress == 0 {
+		return prompt
+	}
+	return compress.Prompt(r.opt.PromptCompress, cat == classify.Summarize, prompt)
 }
 
 func looksLikePython(prompt, code string) bool {

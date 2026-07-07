@@ -7,8 +7,8 @@ import (
 )
 
 func TestStopFor(t *testing.T) {
-	on := &Router{stopSeqs: true}
-	off := &Router{stopSeqs: false}
+	on := &Router{opt: Options{StopSeqs: true}}
+	off := &Router{opt: Options{StopSeqs: false}}
 
 	cases := []struct {
 		cat       classify.Category

@@ -22,6 +22,9 @@ type ChatRequest struct {
 	MaxTokens   int
 	Temperature float64
 	Stop        []string
+	// ResponseFormat is sent as the response_format body field when set —
+	// e.g. a Fireworks GBNF grammar constraining the completion.
+	ResponseFormat any
 	// Extra is merged into the JSON body verbatim — used for provider
 	// specific knobs like disabling thinking mode.
 	Extra map[string]any
@@ -75,6 +78,9 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, erro
 	}
 	if len(req.Stop) > 0 {
 		body["stop"] = req.Stop
+	}
+	if req.ResponseFormat != nil {
+		body["response_format"] = req.ResponseFormat
 	}
 	for k, v := range req.Extra {
 		body[k] = v
