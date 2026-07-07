@@ -74,6 +74,17 @@ func (r *Router) Answer(ctx context.Context, t task.Task) string {
 			return ans
 		}
 	}
+	// The logic solvers self-gate strictly (exact ordering / universal-
+	// syllogism shapes only), so run them regardless of classification —
+	// this rescues misclassified puzzles and never fires on other text.
+	if ans, ok := solve.SolveOrdering(t.Prompt); ok {
+		trace.layer = "code"
+		return ans
+	}
+	if ans, ok := solve.SolveSyllogism(t.Prompt); ok {
+		trace.layer = "code"
+		return ans
+	}
 
 	// Layer 1: one frugal API call, verified by plain code where possible.
 	var ans string

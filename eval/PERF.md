@@ -25,3 +25,19 @@ layer dağılımı (deterministic/local/unproven).
 **Adım 2 dersi (kalıcı):** Skor = token olduğu için varsayılan daima tam-CoT doğrulama;
 kısa örneklem yalnızca süre baskısında meşru. Statik hız optimizasyonu skorlanan
 token'ı artırıyorsa reddedilir.
+
+## Free logic çözücüler (2026-07-07, pivot-sonrası)
+
+Rakip pariteси için `SolveOrdering` (sıralama, topological sort) + `SolveSyllogism`
+(kıyas, reachability) eklendi — `internal/solve/logic.go`. Kategoriden bağımsız çalışır
+(katı self-gate → yanlış sınıflanan bulmacayı kurtarır, eşleşmeyen metinde ateşlemez).
+
+| Set | Kod ile çözülen logic | Not |
+|---|---|---|
+| tasks.json | logic-3 (Fay), logic-6 (Yes) | logic-6 factual'a sınıflanmıştı, solver kurtardı → 2 görev **0 token** |
+| hard.json | 0 | lh-1/2/3 (zebra/knights/konum-ofset) güvenle devredildi |
+| paraphrased.json | 0 | farklı ifade ("Name the winner", "does it follow") kalıba uymadı → güvenle devredildi |
+
+**Karar: TUT.** Kanonik ifadeli sıralama/kıyas görevlerini 0 token'a düşürüyor, hiçbir
+kapsam-dışı göreve YANLIŞ kod-cevabı vermiyor (altın kural korundu). Kapsam ifade-bağımlı
+(paraphrase'lerde deferliyor) ama risk sıfır. Gerçek değer gizli jüri ifadesine bağlı.
