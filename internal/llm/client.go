@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync/atomic"
 	"time"
 )
 
@@ -44,6 +45,15 @@ type Client struct {
 	BaseURL string
 	APIKey  string
 	HTTP    *http.Client
+
+	calls            atomic.Int64
+	completionTokens atomic.Int64
+}
+
+// Stats reports call and completion-token counts — the hardware-independent
+// cost metrics used to evaluate performance changes.
+func (c *Client) Stats() (calls, completionTokens int64) {
+	return c.calls.Load(), c.completionTokens.Load()
 }
 
 func NewClient(baseURL, apiKey string, timeout time.Duration) *Client {
@@ -112,6 +122,8 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, erro
 	if len(parsed.Choices) == 0 {
 		return nil, fmt.Errorf("chat %s: no choices", req.Model)
 	}
+	c.calls.Add(1)
+	c.completionTokens.Add(int64(parsed.Usage.CompletionTokens))
 	return &ChatResponse{
 		Content:      parsed.Choices[0].Message.Content,
 		FinishReason: parsed.Choices[0].FinishReason,

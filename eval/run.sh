@@ -14,9 +14,10 @@ mkdir -p "$OUT_DIR"
 
 SERVER_PID=""
 if [[ -n "${MODEL:-}" ]]; then
+  # shellcheck disable=SC2086 — EXTRA_ARGS is intentionally word-split
   llama-server -m "$MODEL" --port 8080 --host 127.0.0.1 \
     -c "${CTX:-16384}" --parallel "${PARALLEL:-4}" --no-webui \
-    --reasoning off >"$OUT_DIR/llama-server.log" 2>&1 &
+    --reasoning off ${EXTRA_ARGS:-} >"$OUT_DIR/llama-server.log" 2>&1 &
   SERVER_PID=$!
   trap '[[ -n "$SERVER_PID" ]] && kill "$SERVER_PID" 2>/dev/null || true' EXIT
   echo "waiting for llama-server (pid $SERVER_PID)..."

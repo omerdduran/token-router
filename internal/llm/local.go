@@ -24,6 +24,7 @@ type LocalOptions struct {
 	CtxSize   int
 	Parallel  int
 	Threads   int
+	ExtraArgs []string
 }
 
 // StartLocal spawns llama-server and blocks until it reports healthy or the
@@ -45,6 +46,7 @@ func StartLocal(ctx context.Context, opts LocalOptions) (*LocalServer, error) {
 	if opts.Threads > 0 {
 		args = append(args, "-t", strconv.Itoa(opts.Threads))
 	}
+	args = append(args, opts.ExtraArgs...)
 	cmd := exec.Command(opts.Bin, args...)
 	cmd.Stdout = os.Stderr // keep agent stdout clean; llama logs go to stderr
 	cmd.Stderr = os.Stderr

@@ -25,6 +25,7 @@ type Config struct {
 	LocalCtxSize   int
 	LocalParallel  int
 	LocalThreads   int
+	LocalExtraArgs []string // space-separated llama-server flags for perf experiments
 
 	Workers             int
 	TotalBudget         time.Duration // hard cap is 10min; keep a safety margin
@@ -50,6 +51,7 @@ func FromEnv() *Config {
 		LocalCtxSize:   envInt("LOCAL_CTX_SIZE", 8192),
 		LocalParallel:  envInt("LOCAL_PARALLEL", 4),
 		LocalThreads:   envInt("LOCAL_THREADS", 0), // 0 = llama-server default (all cores)
+		LocalExtraArgs: strings.Fields(os.Getenv("LOCAL_EXTRA_ARGS")),
 
 		Workers:             envInt("WORKERS", 4),
 		TotalBudget:         envDur("TOTAL_BUDGET", 9*time.Minute+15*time.Second),

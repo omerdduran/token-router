@@ -24,6 +24,7 @@ const fallbackAnswer = "Unable to determine the answer."
 type Router struct {
 	Local *llm.Client    // nil when local inference is unavailable
 	FW    *llm.Fireworks // nil when remote is disabled (dev/offline)
+	Pace  *Pacer         // nil → always ModeFull
 }
 
 // escalateMaxPromptChars gates escalation by input size: remote input tokens
@@ -31,21 +32,15 @@ type Router struct {
 // more than the accuracy it could buy. ~4 chars/token → 2400 chars ≈ 600 tok.
 const escalateMaxPromptChars = 2400
 
-func (r *Router) Answer(ctx context.Context, t task.Task) string {
-	cat, score := classify.ClassifyScored(t.Prompt)
-	trace := &decisionTrace{id: t.ID, cat: cat, clsSource: "regex"}
+// Answer resolves one task using its pre-resolved classification (see
+// ClassifyAll — weak-signal categories are batch-decided by the local model
+// before the worker pool starts).
+func (r *Router) Answer(ctx context.Context, t task.Task, cls Classification) string {
+	cat := cls.Cat
+	mode := r.Pace.Mode()
+	trace := &decisionTrace{id: t.ID, cat: cat, clsSource: cls.Source, mode: mode}
 	defer trace.emit()
-
-	// Weak lexical signal (unseen phrasing): let the local model classify —
-	// free, and far more robust to wording than keyword patterns. Long
-	// passages that merely CONTAIN numbers routinely fake a confident math
-	// score, so long "math" prompts get a second opinion too.
-	weakSignal := score < 2 || (cat == classify.Math && len(t.Prompt) > 350)
-	if weakSignal && r.Local != nil {
-		if c, ok := r.llmClassify(ctx, t.Prompt); ok {
-			cat, trace.cat, trace.clsSource = c, c, "llm"
-		}
-	}
+	defer r.Pace.TaskDone()
 
 	// Layer 0: word problem → expression → exact evaluation in Go.
 	if cat == classify.Math {
@@ -58,12 +53,18 @@ func (r *Router) Answer(ctx context.Context, t task.Task) string {
 	// Layer 1: local model.
 	var best string
 	if r.Local != nil {
-		ans, proven := r.answerLocal(ctx, cat, t.Prompt, trace)
+		ans, proven := r.answerLocal(ctx, mode, cat, t.Prompt, trace)
 		if proven {
 			trace.layer = "local"
 			return ans
 		}
 		best = ans
+	}
+
+	// Emergency pacing: no time left for anything beyond the local answer.
+	if mode == ModeOff && best != "" {
+		trace.layer = "local-paced"
+		return best
 	}
 
 	// Layer 2: escalate — unless the input is so long that remote input
@@ -106,7 +107,26 @@ func (r *Router) Answer(ctx context.Context, t task.Task) string {
 // answerLocal produces the best local answer and reports whether it is
 // "proven": verified by execution, consistency vote, or format checks strict
 // enough for its category. Unproven answers are escalation candidates.
-func (r *Router) answerLocal(ctx context.Context, cat classify.Category, prompt string, trace *decisionTrace) (string, bool) {
+// Under ModeOff every verification beyond the basic format check is skipped
+// and the answer is accepted as-is — answering everything beats verifying
+// some things when the clock is the binding constraint.
+func (r *Router) answerLocal(ctx context.Context, mode VerifyMode, cat classify.Category, prompt string, trace *decisionTrace) (string, bool) {
+	// Emergency pacing also caps generation: a short direct answer beats a
+	// long derivation that never finishes before the deadline.
+	if mode == ModeOff {
+		resp, err := r.Local.Chat(ctx, llm.ChatRequest{
+			Model:       "local",
+			Messages:    []llm.Message{{Role: "system", Content: localSystem[cat] + " Be brief."}, {Role: "user", Content: prompt}},
+			MaxTokens:   120,
+			Temperature: 0,
+		})
+		if err != nil {
+			log.Printf("local error: %v", err)
+			return "", false
+		}
+		return postprocess(cat, resp.Content), true
+	}
+
 	ans, err := r.localChat(ctx, cat, prompt, "")
 	if err != nil {
 		log.Printf("local error: %v", err)
@@ -123,7 +143,7 @@ func (r *Router) answerLocal(ctx context.Context, cat classify.Category, prompt 
 			return ans, false
 		}
 		// Free extra samples; require a 2/3 majority on the final answer.
-		voted, ok := r.selfConsistent(ctx, cat, prompt, ans)
+		voted, ok := r.selfConsistent(ctx, mode, cat, prompt, ans)
 		trace.consistency = ok
 		return voted, ok
 
@@ -188,8 +208,8 @@ func (r *Router) sentimentAgreement(ctx context.Context, prompt, greedy string) 
 func (r *Router) factualAgreement(ctx context.Context, prompt, greedy string) bool {
 	resp, err := r.Local.Chat(ctx, llm.ChatRequest{
 		Model:       "local",
-		Messages:    []llm.Message{{Role: "system", Content: localSystem[classify.Factual]}, {Role: "user", Content: prompt}},
-		MaxTokens:   localMaxTokens[classify.Factual],
+		Messages:    []llm.Message{{Role: "system", Content: "Answer in one concise sentence."}, {Role: "user", Content: prompt}},
+		MaxTokens:   100,
 		Temperature: 0.7,
 	})
 	if err != nil {
@@ -205,26 +225,6 @@ var llmCategories = map[string]classify.Category{
 	"logic": classify.Logic, "code_gen": classify.CodeGen,
 }
 
-func (r *Router) llmClassify(ctx context.Context, prompt string) (classify.Category, bool) {
-	resp, err := r.Local.Chat(ctx, llm.ChatRequest{
-		Model: "local",
-		Messages: []llm.Message{
-			{Role: "system", Content: "Classify the task into exactly one of: factual, math, sentiment, summarize, ner, code_debug, logic, code_gen. Reply with only the category word."},
-			{Role: "user", Content: prompt},
-		},
-		MaxTokens:   8,
-		Temperature: 0,
-	})
-	if err != nil {
-		return "", false
-	}
-	word := strings.ToLower(strings.Trim(strings.TrimSpace(resp.Content), ".\"'` \n"))
-	if i := strings.IndexAny(word, " \n\t"); i > 0 {
-		word = word[:i]
-	}
-	c, ok := llmCategories[word]
-	return c, ok
-}
 
 // proveCode runs the syntax gate, then self-generated tests, then one free
 // repair round with the failure fed back (CodeT-style acceptance).
@@ -455,6 +455,7 @@ type decisionTrace struct {
 	id          string
 	cat         classify.Category
 	clsSource   string
+	mode        VerifyMode
 	layer       string
 	consistency bool
 	retried     bool
@@ -463,7 +464,8 @@ type decisionTrace struct {
 }
 
 func (d *decisionTrace) emit() {
-	parts := []string{"task " + d.id, "cat=" + string(d.cat), "cls=" + d.clsSource, "layer=" + d.layer}
+	parts := []string{"task " + d.id, "cat=" + string(d.cat), "cls=" + d.clsSource,
+		"mode=" + d.mode.String(), "layer=" + d.layer}
 	if d.consistency {
 		parts = append(parts, "consistent")
 	}

@@ -75,6 +75,7 @@ func main() {
 				CtxSize:   cfg.LocalCtxSize,
 				Parallel:  cfg.LocalParallel,
 				Threads:   cfg.LocalThreads,
+				ExtraArgs: cfg.LocalExtraArgs,
 			})
 			if err != nil {
 				log.Printf("warn: local server failed, continuing remote-only: %v", err)
@@ -103,7 +104,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	r := &router.Router{Local: local, FW: fw}
+	deadline, _ := ctx.Deadline()
+	r := &router.Router{Local: local, FW: fw, Pace: router.NewPacer(deadline, len(tasks))}
+
+	// Resolve every category up front: strong regex signals directly, the
+	// rest batched through the local model in a few calls.
+	cls := r.ClassifyAll(ctx, tasks)
 
 	// Worker pool over tasks; results land at their original index.
 	type job struct {
@@ -117,7 +123,7 @@ func main() {
 		go func() {
 			defer wg.Done()
 			for j := range jobs {
-				answer := r.Answer(ctx, j.t)
+				answer := r.Answer(ctx, j.t, cls[j.idx])
 				resultsMu.Lock()
 				results[j.idx].Answer = answer
 				resultsMu.Unlock()
@@ -136,6 +142,10 @@ func main() {
 	}
 	if fw != nil {
 		log.Printf("%s", fw.Summary())
+	}
+	if local != nil {
+		calls, ctoks := local.Stats()
+		log.Printf("local: %d calls, %d completion tokens", calls, ctoks)
 	}
 	log.Printf("done: %d tasks in %s", len(tasks), time.Since(start).Round(time.Millisecond))
 }

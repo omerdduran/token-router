@@ -18,15 +18,36 @@ import (
 
 const consistencyExtraSamples = 2 // first greedy answer + 2 sampled = 3 votes
 
+// Verification samples don't need the full derivation, but zero reasoning
+// makes the 4B sampler incompetent (measured: unproven 7→14 with answer-only
+// sampling — false disagreements everywhere). Brief-reasoning sampling keeps
+// the sampler capable at ~25% of the full-CoT volume.
+var terseSampleSystem = map[classify.Category]string{
+	classify.Math:  "Solve with the briefest possible working, then end with 'Answer: <number>'.",
+	classify.Logic: "Reason briefly (a few lines at most), then end with 'Answer: <solution>'.",
+}
+
+var terseSampleMaxTokens = map[classify.Category]int{
+	classify.Math:  150,
+	classify.Logic: 250,
+}
+
 // selfConsistent returns the majority answer and whether a majority (>= 2/3)
-// exists. The greedy answer participates as one vote.
-func (r *Router) selfConsistent(ctx context.Context, cat classify.Category, prompt, greedy string) (string, bool) {
+// exists. The greedy answer participates as one vote. Under ModeFull the
+// samples reason at full depth (measured: fewest false disagreements, hence
+// fewest wasted escalations); ModeBrief trades some verification precision
+// for ~4x less sample volume.
+func (r *Router) selfConsistent(ctx context.Context, mode VerifyMode, cat classify.Category, prompt, greedy string) (string, bool) {
+	sys, maxTok := localSystem[cat], localMaxTokens[cat]
+	if mode == ModeBrief {
+		sys, maxTok = terseSampleSystem[cat], terseSampleMaxTokens[cat]
+	}
 	votes := []string{greedy}
 	for i := 0; i < consistencyExtraSamples; i++ {
 		resp, err := r.Local.Chat(ctx, llm.ChatRequest{
 			Model:       "local",
-			Messages:    []llm.Message{{Role: "system", Content: localSystem[cat]}, {Role: "user", Content: prompt}},
-			MaxTokens:   localMaxTokens[cat],
+			Messages:    []llm.Message{{Role: "system", Content: sys}, {Role: "user", Content: prompt}},
+			MaxTokens:   maxTok,
 			Temperature: 0.7,
 		})
 		if err != nil {
