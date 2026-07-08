@@ -243,3 +243,26 @@ sentiment (sh-1) correct; base sentiment 3/3.
 
 mh-1's '222' is the mock's canned PAL expression (meaningful live), not a
 local failure.
+
+### Docker functional validation (amd64 image, `--memory 4g --cpus 2`)
+
+Image: **3.14 GB** uncompressed (well under the 10 GB compressed limit).
+practice.json run under qemu emulation on Apple Silicon (5–10× slower than
+real x86 — functional signal only):
+
+- llama-server loaded the bundled E2B **in ~21 s** from container start
+  (inside the 55 s gate) — no OOM under the 4 GB limit (weights + ctx 4096 fit).
+- Emulated generation was too slow for the 20 s local timeout → every local
+  attempt escalated gracefully; **8/8 answered, valid JSON, exit 0, 59.6 s
+  total**. The degradation path is proven end-to-end in-container.
+- practice-07 answered by the single-domain solver inside the container
+  (0 tokens).
+
+### CPU throughput proxy (host llama-server, `-ngl 0 -t 2`, no GPU)
+
+Native CPU with 2 threads approximates the grading box far better than qemu:
+tasks.json (64) finished in **2m45s** — 35 local answers (0 scored tokens),
+25 Fireworks calls (2 more than the Metal run: a couple of slow locals hit
+the 20 s timeout and escalated, as designed). Even if the grading box's vCPUs
+are 2× slower per core, the projection (~5.5 min) stays inside the 10-minute
+budget with the pacer as backstop.

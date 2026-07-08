@@ -1,6 +1,7 @@
 """OpenAI-compatible mock of the Fireworks proxy for offline contract tests.
 Returns category-plausible canned answers and realistic usage numbers."""
 import json
+import os
 import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -63,4 +64,6 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    ThreadingHTTPServer(("127.0.0.1", 18080), Handler).serve_forever()
+    # MOCK_BIND=0.0.0.0 exposes the mock to Docker containers via
+    # host.docker.internal for in-container contract tests.
+    ThreadingHTTPServer((os.environ.get("MOCK_BIND", "127.0.0.1"), 18080), Handler).serve_forever()
