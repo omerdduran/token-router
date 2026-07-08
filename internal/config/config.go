@@ -103,6 +103,12 @@ type Config struct {
 	// shared per-category system prompt is billed at Fireworks' discount
 	// (default 50%). Routing-only, no accuracy impact — on by default.
 	PrefixCache bool
+
+	// RemoteCaps applies the per-category max_tokens tables to Fireworks
+	// calls. false omits max_tokens entirely (the profile the gate-passing
+	// naive agents use) — spends more tokens but can never truncate an
+	// answer into a judge failure.
+	RemoteCaps bool
 }
 
 func FromEnv() *Config {
@@ -145,6 +151,7 @@ func FromEnv() *Config {
 
 		ReasoningEffort: envStr("REASONING_EFFORT", "none"),
 		PrefixCache:     envBool("PREFIX_CACHE", true),
+		RemoteCaps:      envBool("REMOTE_CAPS", true),
 	}
 }
 

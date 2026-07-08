@@ -64,6 +64,10 @@ type Options struct {
 	// ("" = don't send). Thinking tokens are scored, so "low" is the
 	// default; endpoints that reject the knob get one plain retry.
 	ReasoningEffort string
+
+	// RemoteCaps=false omits max_tokens on Fireworks calls entirely —
+	// the conformity profile: more tokens, zero truncation risk.
+	RemoteCaps bool
 }
 
 func New(fw *llm.Fireworks, pace *Pacer, opt Options) *Router {
@@ -492,6 +496,9 @@ func (r *Router) call(ctx context.Context, role llm.Role, cat classify.Category,
 	if generic {
 		sys, maxTok = genericSystem, genericMaxTokens
 	}
+	if !r.opt.RemoteCaps {
+		maxTok = 0 // omitted from the request body entirely
+	}
 	resp, err := r.chatConstrained(ctx, role, cat, generic, llm.ChatRequest{
 		Messages:    r.messages(sys, r.compress(cat, prompt)),
 		MaxTokens:   maxTok,
@@ -507,9 +514,13 @@ func (r *Router) call(ctx context.Context, role llm.Role, cat classify.Category,
 }
 
 func (r *Router) callWithNudge(ctx context.Context, role llm.Role, cat classify.Category, prompt string) (string, error) {
+	nudgeTok := remoteMaxTokens[cat]
+	if !r.opt.RemoteCaps {
+		nudgeTok = 0
+	}
 	resp, err := r.chatConstrained(ctx, role, cat, false, llm.ChatRequest{
 		Messages:    r.messages(remoteSystem[cat]+" Follow the required output format exactly.", r.compress(cat, prompt)),
-		MaxTokens:   remoteMaxTokens[cat],
+		MaxTokens:   nudgeTok,
 		Temperature: 0,
 		Stop:        r.stopFor(cat),
 	})

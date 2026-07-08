@@ -167,6 +167,7 @@ func main() {
 		Local:           localClient,
 		LocalCategories: cfg.LocalCategories,
 		ReasoningEffort: cfg.ReasoningEffort,
+		RemoteCaps:      cfg.RemoteCaps,
 	})
 
 	// Dedup pre-pass: normalized-identical prompts are answered once; the

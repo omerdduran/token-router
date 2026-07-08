@@ -25,8 +25,16 @@ on:
         default: "4"
         required: false
       reasoning_effort:
-        description: "DEFAULT_REASONING_EFFORT"
+        description: "DEFAULT_REASONING_EFFORT ('' = never send the param)"
         default: "none"
+        required: false
+      prefix_cache:
+        description: "DEFAULT_PREFIX_CACHE (false = no x-session-affinity header)"
+        default: "true"
+        required: false
+      remote_caps:
+        description: "DEFAULT_REMOTE_CAPS (false = omit max_tokens on remote)"
+        default: "true"
         required: false
 
 permissions:
@@ -55,5 +63,7 @@ jobs:
             DEFAULT_LOCAL_CATEGORIES=${{ inputs.local_categories }}
             DEFAULT_WORKERS=${{ inputs.workers }}
             DEFAULT_REASONING_EFFORT=${{ inputs.reasoning_effort }}
+            DEFAULT_PREFIX_CACHE=${{ inputs.prefix_cache }}
+            DEFAULT_REMOTE_CAPS=${{ inputs.remote_caps }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
