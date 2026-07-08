@@ -7,8 +7,7 @@ It answers with free plain code when it can, with a free in-container Gemma when
 ![License](https://img.shields.io/badge/License-MIT-green)
 ![Platform](https://img.shields.io/badge/image-linux%2Famd64-blue?logo=docker&logoColor=white)
 ![Inference](https://img.shields.io/badge/inference-Fireworks%20AI-ff6a00)
-<!-- After pushing, add the CI badge:
-![CI](https://github.com/<owner>/<repo>/actions/workflows/build.yml/badge.svg) -->
+![CI](https://github.com/omerdduran/token-router/actions/workflows/build.yml/badge.svg)
 
 ---
 
@@ -106,8 +105,10 @@ Robustness is built in for a one-shot grader:
 Build for the judging VM (`linux/amd64`) and push to a public registry:
 
 ```bash
-docker buildx build --platform linux/amd64 -t <registry>/token-router:latest --push .
+docker buildx build --platform linux/amd64 -t ghcr.io/omerdduran/token-router:latest --push .
 ```
+
+Every push to `main` also builds and publishes the image via GitHub Actions.
 
 Run it the way the harness does — mount input/output and inject the Fireworks environment:
 
@@ -117,7 +118,7 @@ docker run --rm \
   -e FIREWORKS_API_KEY=... \
   -e FIREWORKS_BASE_URL=... \
   -e ALLOWED_MODELS="gemma-4-31b-it,gemma-4-26b-a4b-it,kimi-k2p7-code,minimax-m3" \
-  <registry>/token-router:latest
+  ghcr.io/omerdduran/token-router:latest
 ```
 
 The image bundles the Go agent, `python3` (executes and verifies generated code), a lean static `llama-server`, and the Gemma 4 E2B Q4 weights — local inference is explicitly permitted and scores zero tokens.
