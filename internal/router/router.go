@@ -190,6 +190,9 @@ func (r *Router) TrySolveFree(cat classify.Category, prompt string) (string, boo
 		if ans, ok := solve.SolveZebra(prompt); ok {
 			return ans, true
 		}
+		if ans, ok := solve.SolveSingleAssign(prompt); ok {
+			return ans, true
+		}
 		if ans, ok := solve.SolvePositions(prompt); ok {
 			return ans, true
 		}
