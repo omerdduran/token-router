@@ -1,7 +1,7 @@
 # AMD Developer Hackathon: ACT II — Track 1 Bilgi Dosyası
 
 Tek doğruluk kaynağı: kurallar, skorlama, kısıtlar ve organizatör açıklamaları.
-Son güncelleme: 7 Temmuz 2026.
+Son güncelleme: 8 Temmuz 2026 (güncel resmî Participant Guide + Steve/lablab duyurusu).
 
 ## Künye
 
@@ -23,25 +23,48 @@ Son güncelleme: 7 Temmuz 2026.
 
 Model seçimi **skor açısından ~nötr** (3 Gemma aynı tokenizer → aynı string = aynı token; fark sadece gevezelik + retry sayısı). Model seçimi **dolar açısından farklı** (Kimi ~$0.95/$4.00, MiniMax ~$0.30/$1.20, Gemma ucuz per 1M) → sadece dev kredisini ilgilendirir, skoru değil.
 
-## ⚠️ KRİTİK KURAL AÇIKLAMASI (7 Tem, organizatör Discord)
+## ⚠️⚠️ KURAL GERİ DÖNÜŞÜ (8 Tem, RESMÎ Participant Guide + Steve/lablab duyurusu)
 
-İlk duyurulardaki "lokal token 0 sayılır" ifadesi yanıltıcıydı; organizatör netleştirmesi:
+7 Tem'deki "lokal model bundle yasak" Discord açıklaması **resmen tersine döndü.**
+Güncel rehber (Rules bölümü) — bağlayıcı metin:
 
-- **"You cannot bundle local models in your final Docker submission."** Lokal model imaja konamaz — boyutu ne olursa olsun.
-- Skorlanan **tüm inference** `FIREWORKS_BASE_URL` üzerinden, `ALLOWED_MODELS` içindeki bir modelle yapılmalı.
-- Lokal inference "sıfır sayılır ve **sayılmaz**" — yani strateji aracı değil, geçersiz.
-- 10GB imaj limiti kod + bağımlılıklar içindir; model ağırlığı taşınması beklenmiyor.
-- Jüri container'ı sadece API çağrısı yapar → **CPU/GPU tasarımı gereksiz**.
-- **Koşullu model seçimi serbest:** "You can use conditions to select different models for different tasks, as long as they are from the allowed list."
-- ALLOWED_MODELS listesi değerlendirme boyunca sabit kalacak.
+> **"Local models and tokens used locally count as zero for the final score;
+> all Fireworks API calls must go through FIREWORKS_BASE_URL; local model
+> inference inside the container is permitted and counts toward accuracy,
+> but not toward the token score."**
 
-**Gri alan ÇÖZÜLDÜ (7 Tem, ikinci organizatör açıklaması):** "Routing intelligence
-just means deciding when a task needs an LLM call (route to the cheapest
-ALLOWED_MODELS model) versus **when it can be handled with plain code (zero
-tokens)**. It's not local LLM vs. remote LLM." → Deterministik kod çözücüler
-(Go aritmetik, kod çalıştırarak doğrulama) açıkça meşru ve yarışmanın amaçlanan
-tasarımı. Kazanma formülü: düz kodla çözülebileni kodla çöz (0 token) + kalanını
-en ucuz yeterli modele minimum token'la yönlendir.
+- **Lokal model = geçerli skor stratejisi.** Lokal cevap doğruysa accuracy'ye tam
+  sayılır ve 0 Fireworks token'ı — "the best possible outcome for ranking" (Steve).
+- `ZERO_API_CALLS` işareti hata değil, açıkça **geçerli strateji** (rehber, s.6).
+- **Grading ortamı: 4 GB RAM, 2 vCPU** (CPU-only). Rehber boyutlandırması:
+  2B–3B 4-bit quantized güvenli; 7B 4-bit tüm RAM'i doldurur (agent koduna yer kalmaz).
+- **Ollama/runtime önyüklü DEĞİL** — model ağırlıkları doğrudan imaja gömülmeli
+  (10GB sıkıştırılmış limit içinde).
+- Harness kendi `FIREWORKS_API_KEY`'ini enjekte eder — kendi key'ini imaja koyma
+  (.env sadece lokal dev için).
+- 7 Tem'den geçerliliğini koruyanlar: koşullu model seçimi serbest; düz-kod
+  çözücüler meşru ("plain code = zero tokens"); tüm Fireworks çağrıları
+  `FIREWORKS_BASE_URL` üzerinden.
+
+**Güncel kazanma formülü:** düz kodla çözüleni kodla çöz (0 token) → kalanını
+**imaja gömülü küçük lokal modelle** cevapla (0 token, accuracy'ye sayılır) →
+yalnızca lokal cevabın gate'i geçemeyeceği kanıtlanan/riskli görevleri Fireworks'e
+minimum token'la yönlendir. Teorik en iyi skor: gate'i geçen `ZERO_API_CALLS`.
+
+### Troubleshooting statüleri (rehber)
+
+`PULL_ERROR` (amd64 manifest eksik) · `RUNTIME_ERROR` (non-zero exit) ·
+`TIMEOUT` (>10 dk) · `OUTPUT_MISSING` · `INVALID_RESULTS_SCHEMA` ·
+`MODEL_VIOLATION` (liste dışı Fireworks modeli) · `IMAGE_TOO_LARGE` ·
+`ACCURACY_GATE_FAILED`. Leaderboard ~5 dk'da güncellenir (şimdilik sadece rank).
+
+### Resmî practice görevleri (gerçek set DEĞİL — rehber, s.3)
+
+8 örnek: iki-parçalı factual (capital+su kütlesi), %+mutlak karışık math,
+kontrastlı sentiment, tek-cümle özet, NER (kişi+şirket+yer+görece tarih),
+`get_max(nums): return nums[0]` debug, **TEK-domain pet bulmacası** (Sam/Jo/Lee —
+zebra çözücümüz iki-domain istiyor: kapsam boşluğu!), second-largest-with-duplicates
+codegen. → eval'e eklenmeli; container I/O'yu bunlarla doğrula, submission slotu yakma.
 
 ## ALLOWED_MODELS (Track 1, launch günü yayınlandı)
 
@@ -90,3 +113,4 @@ en ucuz yeterli modele minimum token'la yönlendir.
 ## Zaman çizelgesi / durum notları
 
 - 7 Tem: ALLOWED_MODELS öğrenildi; lokal-first mimari kuruldu ve eval'lerle %90-97 lokal accuracy ölçüldü; ardından organizatör açıklamasıyla lokal model yasağı öğrenildi → **Fireworks-only mimariye pivot** (bkz. görev listesi #11). Leaderboard hâlâ boş — kimse geçerli submission atmadan öğrenmiş olduk.
+- 8 Tem: Resmî rehber güncellendi — **lokal model yasağı tersine döndü** (yukarıdaki bölüm). Pre-pivot lokal-first mimari (git geçmişinde) yeniden kazanan strateji; 4GB/2vCPU'ya göre yeniden boyutlandırılacak (E4B yerine muhtemelen 2B-3B Q4). Track 1 scoring pipeline canlı. 7 rakip repo analiz edildi (bkz. hafıza/rakip notları): hiçbirinde kanıt-kapılı düz-kod cevap yok; en ciddi rakip frugal-router (lokal GGUF beyin + draft-confirm) — yeni kural onların mimarisini de meşrulaştırdı.
