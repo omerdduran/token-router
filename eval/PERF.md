@@ -244,6 +244,51 @@ sentiment (sh-1) correct; base sentiment 3/3.
 mh-1's '222' is the mock's canned PAL expression (meaningful live), not a
 local failure.
 
+## Local model bake-off: E2B vs Gemma-3-4B (2026-07-08)
+
+Research (research-repivot-findings) suggested a stronger 3-4B model that fits
+4 GB might raise Layer-1 accuracy. Tested empirically: ran all four eval sets
+against **Gemma 4 E2B** (current, ~3 GB Q4_K_XL) and **Gemma 3 4B**
+(~2.5 GB Q4_K_M), both real llama-server, then judged the 54 model-dependent
+answers with a 3-judge majority panel (159 judge calls). Both are Gemma-family
+(safe for the side prize; the local model is NOT bound by ALLOWED_MODELS).
+
+Result `[localCorrect, localWrong, escalated]`:
+
+| Category | E2B | Gemma-3-4B | Winner |
+|---|---|---|---|
+| math | [7,0,2] | [4,**5**,0] | **E2B (decisive)** |
+| summarize | [11,0,0] | [6,3,2] | **E2B (decisive)** |
+| ner | [7,1,0] | [6,2,0] | E2B |
+| factual | [12,1,0] | [12,1,0] | tie |
+| sentiment | [6,0,0] | [6,0,0] | tie |
+| logic | [1,0,3] | [4,0,0] | Gemma-3-4B |
+| **TOTAL** | **46 / 2 / 5** | **39 / 12 / 2** | **E2B** |
+
+**Decisive metric = local-WRONG** (a 0-token answer that is wrong = an accuracy
+-gate loss for that task): **E2B 2 vs G4B 12 (6×).** G4B keeps more tasks local
+(2 escalations vs 5) but its extra local answers are disproportionately WRONG —
+trading ~a few hundred tokens of savings for 10 more wrong-answer risks, a bad
+trade in a token-scored-but-accuracy-gated contest.
+
+Root cause: E2B is better CALIBRATED to our free-verification gates — it
+escalates when unsure (math it can't express, logic it can't conclude);
+G4B pushes confident-but-wrong answers, especially on **PAL math** (a valid
+expression that mis-models the problem: 162→31.48, 1320→−1320, 3→−5) where
+there is no post-hoc correctness check, only arithmetic-validity. G4B's only
+edge is logic (4 local-correct vs E2B's 3 escalations) — but E2B answers those
+CORRECTLY via escalation for a few hundred tokens, so the gap is cost not
+accuracy, and it's dwarfed by the math regression. G4B is also 4B-dense →
+slower on the 2 vCPU box (timeout risk) and sometimes adds a preamble that
+breaks a one-sentence constraint (summ-7).
+
+**Decision: KEEP E2B.** The stronger-model hypothesis is empirically REFUTED
+for our pipeline: raw model strength matters less than calibration to the
+verification gates. (Latent risk surfaced: the PAL path accepts any valid
+arithmetic expression without checking it models the problem — E2B happens to
+be reliable here, but a future hardening could cross-check two independent PAL
+samples. Not pursued now.)
+
 ### Docker functional validation (amd64 image, `--memory 4g --cpus 2`)
 
 Image: **3.14 GB** uncompressed (well under the 10 GB compressed limit).
