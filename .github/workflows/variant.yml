@@ -1,0 +1,59 @@
+name: build-variant
+
+# Builds a ladder-rung image with baked env defaults and pushes it under a
+# named tag. Verify locally / on the leaderboard, then promote-champion.
+#
+#   gh workflow run build-variant -f tag=rung1 -f local=true \
+#     -f local_categories="math,code_gen,code_debug"
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag for this variant"
+        required: true
+      local:
+        description: "DEFAULT_LOCAL (true/false)"
+        default: "true"
+        required: false
+      local_categories:
+        description: "DEFAULT_LOCAL_CATEGORIES (comma list, empty = all)"
+        default: ""
+        required: false
+      workers:
+        description: "DEFAULT_WORKERS"
+        default: "4"
+        required: false
+      reasoning_effort:
+        description: "DEFAULT_REASONING_EFFORT"
+        default: "none"
+        required: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/${{ github.repository }}:${{ inputs.tag }}
+          build-args: |
+            DEFAULT_LOCAL=${{ inputs.local }}
+            DEFAULT_LOCAL_CATEGORIES=${{ inputs.local_categories }}
+            DEFAULT_WORKERS=${{ inputs.workers }}
+            DEFAULT_REASONING_EFFORT=${{ inputs.reasoning_effort }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -75,6 +75,13 @@ func NewClient(baseURL, apiKey string, timeout time.Duration) *Client {
 	}
 }
 
+// transient reports whether a request is worth retrying: rate limits and
+// server-side hiccups. A burst of 429s under worker concurrency must never
+// turn into fallback answers — every one of those is an accuracy-gate loss.
+func transient(status int) bool {
+	return status == http.StatusTooManyRequests || status >= 500
+}
+
 func (c *Client) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
 	body := map[string]any{
 		"model":       req.Model,
@@ -98,10 +105,34 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, erro
 		return nil, err
 	}
 
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			// 700ms, 1.4s — enough to ride out a rate-limit window without
+			// blowing the per-request budget.
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(time.Duration(attempt) * 700 * time.Millisecond):
+			}
+		}
+		resp, retry, err := c.chatOnce(ctx, req.Model, payload)
+		if err == nil {
+			return resp, nil
+		}
+		lastErr = err
+		if !retry {
+			return nil, err
+		}
+	}
+	return nil, lastErr
+}
+
+func (c *Client) chatOnce(ctx context.Context, model string, payload []byte) (*ChatResponse, bool, error) {
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		c.BaseURL+"/chat/completions", bytes.NewReader(payload))
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	if c.APIKey != "" {
@@ -113,15 +144,17 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, erro
 
 	resp, err := c.HTTP.Do(httpReq)
 	if err != nil {
-		return nil, err
+		// Network-level errors are worth one more shot unless the context is done.
+		return nil, ctx.Err() == nil, err
 	}
 	defer resp.Body.Close()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if err != nil {
-		return nil, err
+		return nil, true, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("chat %s: status %d: %s", req.Model, resp.StatusCode, truncate(string(data), 300))
+		return nil, transient(resp.StatusCode),
+			fmt.Errorf("chat %s: status %d: %s", model, resp.StatusCode, truncate(string(data), 300))
 	}
 
 	var parsed struct {
@@ -140,10 +173,10 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, erro
 		Usage Usage `json:"usage"`
 	}
 	if err := json.Unmarshal(data, &parsed); err != nil {
-		return nil, fmt.Errorf("chat %s: bad response: %w", req.Model, err)
+		return nil, false, fmt.Errorf("chat %s: bad response: %w", model, err)
 	}
 	if len(parsed.Choices) == 0 {
-		return nil, fmt.Errorf("chat %s: no choices", req.Model)
+		return nil, false, fmt.Errorf("chat %s: no choices", model)
 	}
 	c.calls.Add(1)
 	c.completionTokens.Add(int64(parsed.Usage.CompletionTokens))
@@ -152,7 +185,7 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, erro
 		ReasoningContent: parsed.Choices[0].Message.ReasoningContent,
 		FinishReason:     parsed.Choices[0].FinishReason,
 		Usage:            parsed.Usage,
-	}, nil
+	}, false, nil
 }
 
 func truncate(s string, n int) string {

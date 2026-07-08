@@ -10,6 +10,46 @@ import (
 	"time"
 )
 
+func TestChatRetriesTransientErrors(t *testing.T) {
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		if hits < 3 {
+			w.WriteHeader(http.StatusTooManyRequests) // rate-limited twice
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`))
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "", 10*time.Second)
+	resp, err := c.Chat(context.Background(), ChatRequest{Model: "m",
+		Messages: []Message{{Role: "user", Content: "hi"}}})
+	if err != nil || resp.Content != "ok" {
+		t.Fatalf("want recovery after 429s, got resp=%v err=%v", resp, err)
+	}
+	if hits != 3 {
+		t.Errorf("want 3 attempts, got %d", hits)
+	}
+
+	// A 4xx that isn't a rate limit must NOT be retried.
+	hits = 0
+	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv2.Close()
+	c2 := NewClient(srv2.URL, "", 10*time.Second)
+	if _, err := c2.Chat(context.Background(), ChatRequest{Model: "m",
+		Messages: []Message{{Role: "user", Content: "hi"}}}); err == nil {
+		t.Fatal("want error on 404")
+	}
+	if hits != 1 {
+		t.Errorf("404 must not be retried, got %d attempts", hits)
+	}
+}
+
 func TestChatBodySerialization(t *testing.T) {
 	var got map[string]any
 	var gotAffinity string

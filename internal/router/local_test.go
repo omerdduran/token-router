@@ -106,6 +106,34 @@ func TestLocalFailureEscalatesToRemote(t *testing.T) {
 	}
 }
 
+func TestThinkingDrainRescue(t *testing.T) {
+	// First remote response burns the whole cap inside reasoning_content;
+	// the rescue retry with a bigger cap must deliver the real answer.
+	var calls atomic.Int64
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := calls.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		if n == 1 {
+			_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"","reasoning_content":"thinking..."},"finish_reason":"length"}],"usage":{"prompt_tokens":5,"completion_tokens":40,"total_tokens":45}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"Positive"},"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":50,"total_tokens":55}}`))
+	}))
+	defer remote.Close()
+
+	fw := llm.NewFireworks(llm.NewClient(remote.URL, "", 5*time.Second), []string{"gemma-4-26b-a4b-it"})
+	r := New(fw, nil, Options{RetryBudget: 0, ReasoningEffort: "none"})
+
+	ans := r.Answer(context.Background(), task.Task{ID: "t4",
+		Prompt: "Classify the sentiment of this review: 'Absolutely wonderful device.'"})
+	if ans != "Positive" {
+		t.Fatalf("drain rescue failed, got %q", ans)
+	}
+	if calls.Load() != 2 {
+		t.Errorf("want exactly 2 calls (drain + rescue), got %d", calls.Load())
+	}
+}
+
 func TestLocalPALComputesInGo(t *testing.T) {
 	var localCalls, remoteCalls atomic.Int64
 	local := fakeChat(t, "(240 * 0.85) - 60", &localCalls)

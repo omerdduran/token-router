@@ -51,4 +51,16 @@ ENV LOCAL_MODEL_PATH=/models/model.gguf \
     LOCAL_SERVER_BIN=/usr/local/bin/llama-server \
     LOCAL_BASE_URL=http://127.0.0.1:8080
 
+# Ladder knobs baked per-variant: the harness runs the image with ITS env
+# only (FIREWORKS_*), so each submission rung is a build with different
+# defaults. Defaults here match the code's own defaults.
+ARG DEFAULT_LOCAL=true
+ARG DEFAULT_LOCAL_CATEGORIES=""
+ARG DEFAULT_WORKERS=4
+ARG DEFAULT_REASONING_EFFORT=none
+ENV LOCAL=${DEFAULT_LOCAL} \
+    LOCAL_CATEGORIES=${DEFAULT_LOCAL_CATEGORIES} \
+    WORKERS=${DEFAULT_WORKERS} \
+    REASONING_EFFORT=${DEFAULT_REASONING_EFFORT}
+
 ENTRYPOINT ["/usr/local/bin/agent"]

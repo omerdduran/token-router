@@ -535,11 +535,29 @@ func (r *Router) chatConstrained(ctx context.Context, role llm.Role, cat classif
 		req.Extra["reasoning_effort"] = r.opt.ReasoningEffort
 	}
 	resp, err := r.FW.Chat(ctx, role, req)
-	if err == nil || (req.ResponseFormat == nil && req.Extra == nil) {
+	if err != nil && (req.ResponseFormat != nil || req.Extra != nil) {
+		req.ResponseFormat, req.Extra = nil, nil // knobs rejected → plain retry
+		resp, err = r.FW.Chat(ctx, role, req)
+	}
+	if err != nil {
 		return resp, err
 	}
-	req.ResponseFormat, req.Extra = nil, nil // knobs rejected → plain retry
-	return r.FW.Chat(ctx, role, req)
+	// Thinking drain: a model that didn't honor reasoning_effort can spend
+	// the whole token cap inside reasoning_content and return an empty (or
+	// length-truncated, leaked) answer. One rescue attempt with a much
+	// larger cap lets the answer finish AFTER the thinking — the extra
+	// tokens are cheaper than an accuracy-gate loss on the task.
+	drained := resp.Content == "" && resp.ReasoningContent != ""
+	leaked := resp.FinishReason == "length" && resp.ReasoningContent == "" && resp.Content != "" &&
+		req.MaxTokens > 0 && req.MaxTokens < 200
+	if drained || leaked {
+		big := req
+		big.MaxTokens = max(req.MaxTokens*4, 600)
+		if r2, err2 := r.FW.Chat(ctx, role, big); err2 == nil && r2.Content != "" {
+			return r2, nil
+		}
+	}
+	return resp, nil
 }
 
 // compress applies the PROMPT_COMPRESS level to text bound for the API. The
