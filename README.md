@@ -1,7 +1,7 @@
 # TokenRouter
 
 **A token-minimizing agent for the AMD Developer Hackathon: ACT II — Track 1.**
-It answers with free plain code when it can, and spends the fewest Fireworks AI tokens it must when it can't.
+It answers with free plain code when it can, with a free in-container Gemma when it can verify, and spends the fewest Fireworks AI tokens it must for the rest.
 
 ![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green)
@@ -14,12 +14,13 @@ It answers with free plain code when it can, and spends the fewest Fireworks AI 
 
 ## The idea
 
-Track 1 scores every submission in two stages: an **accuracy gate** (an LLM judge checks each answer against the expected intent), then a ranking by **total Fireworks tokens** — fewer tokens wins. Crucially, work done in plain code is free; only calls through the Fireworks API count.
+Track 1 scores every submission in two stages: an **accuracy gate** (an LLM judge checks each answer against the expected intent), then a ranking by **total Fireworks tokens** — fewer tokens wins. Crucially, work done *inside* the container is free: plain code costs nothing, and per the official rules a bundled local model's answers **count fully toward accuracy and zero toward the token score**.
 
-As the organizers put it, *"routing intelligence" means deciding when a task needs an LLM call versus when it can be handled with plain code (zero tokens).* TokenRouter is built entirely around that decision, on two principles:
+TokenRouter is built entirely around that decision, on three principles:
 
-1. **Solve for free when you can.** Arithmetic, ordering and syllogism puzzles, and answer-checking are computed in Go — no model, zero tokens.
-2. **Spend only on proven need.** Every model answer is verified with free plain code (execute the generated code against self-derived tests, re-evaluate arithmetic, check output format). A paid retry happens *only* on a proven failure — never on a hunch.
+1. **Solve for free when you can.** Arithmetic, five families of logic puzzles, single-edit bug repair, and classic codegen are computed in Go — no model, zero tokens.
+2. **Answer locally when you can verify.** A bundled Gemma 4 E2B (Q4, sized for the 4 GB / 2 vCPU grading box) drafts answers next; generated code must pass the prompt's own examples and formatted answers must pass free checks before a local answer ships. Still zero tokens.
+3. **Spend only on proven need.** Fireworks is the escalation tier: a paid call happens *only* when the free tiers miss or fail verification — never on a hunch — with `reasoning_effort: low` keeping scored thinking tokens down.
 
 That verification-first stance is the differentiator: where a typical router *guesses* whether a task is "hard" and reaches for a bigger model, TokenRouter acts on **evidence** — it never pays for a second opinion on an answer that already passed a free check, and never keeps an answer that failed one.
 
@@ -29,33 +30,38 @@ That verification-first stance is the differentiator: where a typical router *gu
 flowchart TD
     A["/input/tasks.json"] --> B[Classify category]
     B --> C{"Layer 0<br/>plain code?"}
-    C -- "arithmetic / ordering / syllogism" --> Z0["Answer — 0 tokens"]
-    C -- "no" --> D["Layer 1<br/>one frugal Fireworks call"]
+    C -- "solvers · repair · library" --> Z0["Answer — 0 tokens"]
+    C -- "no" --> L{"Layer 1<br/>local Gemma (bundled)"}
+    L -- "passes free verification" --> Z1["Answer — 0 tokens"]
+    L -- "miss / verify fail / time pressure" --> D["Layer 2<br/>one frugal Fireworks call"]
     D --> E{"Free verification<br/>run tests · recompute · format check"}
-    E -- "pass" --> Z1["Answer"]
+    E -- "pass" --> Z2["Answer"]
     E -- "proven failure" --> F["Paid retry<br/>specialist model, budget-gated"]
-    F --> Z2["Answer"]
+    F --> Z3["Answer"]
     Z0 --> W["/output/results.json"]
     Z1 --> W
     Z2 --> W
+    Z3 --> W
 ```
 
-- **Layer 0 — plain code (0 tokens).** Bare arithmetic is evaluated in Go; transitive-ordering and universal-syllogism puzzles are parsed into graphs and solved. These self-gate strictly and *defer* on any ambiguity, so a misclassified task is rescued here but never answered wrongly.
-- **Layer 1 — one frugal API call.** A tight, category-specific system prompt with a small `max_tokens` cap. Math word problems use **PAL**: the model returns a single arithmetic expression (~20 tokens) and Go computes the result — cheaper than a worked solution and correct by construction.
-- **Free verification → paid retry.** Generated code is executed against tests derived from the prompt's own examples; a failure earns one retry against the code specialist model. Format-sensitive categories get one corrective retry. All retries are capped by a global budget.
+- **Layer 0 — plain code (0 tokens).** Bare arithmetic is evaluated in Go; ordering, syllogism, knights-and-knaves, zebra-grid, and assignment puzzles are parsed and solved exhaustively; buggy code is repaired by single-edit mutation; classic codegen comes from a proven library. Everything self-gates strictly and *defers* on any ambiguity, so a misclassified task is rescued here but never answered wrongly.
+- **Layer 1 — bundled local model (0 tokens).** A Gemma 4 E2B (Q4 GGUF, served by an in-container `llama-server`) drafts the answer. Code ships only after passing the prompt's own examples; PAL expressions are recomputed in Go; formatted answers must pass free checks. Local inference counts toward accuracy and zero toward the token score. Under deadline pressure the pacer skips this slow CPU tier.
+- **Layer 2 — one frugal Fireworks call.** A tight, category-specific system prompt with a small `max_tokens` cap and `reasoning_effort: low`. Math word problems use **PAL**: the model returns a single arithmetic expression (~20 tokens) and Go computes the result. Generated code is executed against prompt-derived tests; a proven failure earns one budget-capped retry against the specialist model.
 
 ## The eight categories
 
-| Category | Strategy | Typical cost |
+Every category walks the same ladder — plain code, then the free local model, then one frugal Fireworks call — so the "typical cost" below is the *worst* case, not the common one.
+
+| Category | Strategy | Worst-case cost |
 |---|---|---|
-| Mathematical reasoning | Bare expr → Go eval; else PAL (model emits expression, Go computes) | 0 or ~20 tokens |
-| Logic / deductive | Ordering, syllogism, knights-and-knaves, zebra-grid, and positional-race solvers in Go; else one reasoning-model call | 0 or one call |
-| Code generation | Proven solution library (candidate must pass the prompt's own examples) → else one call → execute against prompt-derived asserts → specialist retry on failure | 0 or one call |
-| Code debugging | Mutation repair (single-edit mutants tested against prompt-derived asserts) → else the same execution-based verification path | 0 or one call |
-| Sentiment | Terse label prompt, tight cap | one call |
-| Factual knowledge | Terse "answer concisely" prompt | one call |
-| Named-entity recognition | Typed one-per-line format prompt | one call |
-| Summarization | Length/format-constrained prompt, no paid retry on long inputs | one call |
+| Mathematical reasoning | Bare expr → Go eval; else PAL locally, then remotely (model emits expression, Go computes) | ~20 tokens |
+| Logic / deductive | Ordering, syllogism, knights-and-knaves, zebra-grid, and assignment solvers in Go; else local draft; else one reasoning call | one call |
+| Code generation | Proven solution library → local draft (ships only if it passes the prompt's own asserts) → one call → specialist retry on proven failure | one call |
+| Code debugging | Mutation repair (single-edit mutants vs prompt-derived asserts) → assert-verified local fix → same remote path | one call |
+| Sentiment | Local label + format check; else terse remote prompt, tight cap | one call |
+| Factual knowledge | Local draft + format check; else terse "answer concisely" prompt | one call |
+| Named-entity recognition | Local typed list + format check; else remote | one call |
+| Summarization | Local constrained summary + length check; else remote, no paid retry on long inputs | one call |
 
 ## Token-efficiency techniques
 
@@ -64,6 +70,8 @@ flowchart TD
 - **Mutation repair** (`MUTATION_REPAIR`) — debug tasks first try every single-edit mutant of the buggy code (flipped comparisons, off-by-ones, swapped operators) against asserts derived from the prompt's own examples. Answers only when the original provably fails and exactly one mutant passes — an APR-style fix for zero tokens.
 - **Proven solution library** (`SOLUTION_LIB`) — classic codegen tasks (fibonacci, palindromes, brackets…) are answered from embedded canonical implementations, but only after the candidate passes the prompt's stated examples. The library never guesses; conventions (0- vs 1-indexed fibonacci) ship as variants and the examples arbitrate.
 - **Duplicate-task dedup** (`DEDUP`) — normalized-identical prompts are answered once and copied; the same question is never paid for twice.
+- **Bundled local tier** (`LOCAL`) — an in-container Gemma 4 E2B answers verified tasks for zero scored tokens; the pacer skips this slow CPU tier under deadline pressure, buying time with tokens instead.
+- **Low reasoning effort** (`REASONING_EFFORT`) — thinking tokens are scored like any others, so remote calls request `reasoning_effort: low`, with a plain retry when an endpoint rejects the knob.
 - **PAL for math** — the model translates a word problem into an expression; Go does the arithmetic, so it can't be wrong and costs a fraction of a worked solution.
 - **Execution-based code verification** — asserts are derived from the prompt's stated examples and run locally; the paid specialist retry fires only when tests actually fail.
 - **Terse category prompts + per-category `max_tokens`** — every scored token is deliberate; no filler, no preamble.
@@ -112,7 +120,7 @@ docker run --rm \
   <registry>/token-router:latest
 ```
 
-The image is just the Go binary plus `python3` (used to execute and verify generated code) — no model weights, per the Track 1 rules.
+The image bundles the Go agent, `python3` (executes and verifies generated code), a lean static `llama-server`, and the Gemma 4 E2B Q4 weights — local inference is explicitly permitted and scores zero tokens.
 
 ## Configuration
 
@@ -127,7 +135,13 @@ The image is just the Go binary plus `python3` (used to execute and verify gener
 | `RETRY_BUDGET` | `-1` | Max paid retries (`-1` = unlimited) |
 | `BATCH_SIZE` | `0` | Batch short tasks per call (`0` = off) |
 | `STOP_SEQ` | `false` | Category stop sequences |
-| `PUZZLE_SOLVERS` | `true` | Brute-force knights/zebra/position solvers |
+| `LOCAL` | `true` | Bundled local-model layer (0 scored tokens) |
+| `LOCAL_MODEL_PATH` | — (image sets it) | GGUF path; empty = probe `LOCAL_BASE_URL` for a dev server |
+| `LOCAL_CATEGORIES` | all | Comma list of categories allowed to answer locally |
+| `LOCAL_CTX_SIZE` / `LOCAL_PARALLEL` / `LOCAL_THREADS` | `4096` / `2` / auto | llama-server sizing for the 4 GB / 2 vCPU box |
+| `LOCAL_REQUEST_TIMEOUT` | `20s` | Per-request cap for local generations |
+| `REASONING_EFFORT` | `low` | Sent on Fireworks calls (thinking tokens are scored); `""` disables |
+| `PUZZLE_SOLVERS` | `true` | Brute-force knights/zebra/position/assignment solvers |
 | `MUTATION_REPAIR` | `true` | Single-edit repair of buggy code before a debug call |
 | `SOLUTION_LIB` | `true` | Canonical solutions proven against prompt examples |
 | `DEDUP` | `true` | Answer duplicate prompts once |

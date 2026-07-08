@@ -1,10 +1,10 @@
-# Fireworks-only agent: the image is just the Go binary plus python3 for
-# executing/verifying generated code. No model weights (organizer ruling:
-# local models cannot be bundled; all scored inference goes through the
-# Fireworks API).
+# Build for the judging VM: linux/amd64, compressed image must stay under 10GB.
 #   docker buildx build --platform linux/amd64 -t <registry>/token-router:latest --push .
+# The official llama.cpp images ship the full toolchain (~6GB); we build a
+# lean static llama-server instead — final image ≈ model + ~200MB.
 
-FROM --platform=$BUILDPLATFORM golang:1.26 AS build
+# --- Stage 1: Go binary ---
+FROM --platform=$BUILDPLATFORM golang:1.26 AS gobuild
 WORKDIR /src
 COPY go.mod ./
 COPY cmd ./cmd
@@ -12,10 +12,43 @@ COPY internal ./internal
 ARG TARGETARCH
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /agent ./cmd/agent
 
+# --- Stage 2: llama-server, static, portable CPU (no -march=native: the
+# judge VM's CPU flags are unknown) ---
+FROM debian:bookworm-slim AS llamabuild
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential cmake git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+ARG LLAMA_TAG=b9890
+RUN git clone --depth 1 --branch ${LLAMA_TAG} https://github.com/ggml-org/llama.cpp /llama
+RUN cmake -S /llama -B /build \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DBUILD_SHARED_LIBS=OFF \
+      -DGGML_NATIVE=OFF \
+      -DLLAMA_CURL=OFF \
+    && cmake --build /build --target llama-server -j"$(nproc)"
+
+# --- Stage 3: model weights ---
+# Grading box is 4 GB RAM / 2 vCPU: E2B Q4 (~3GB) fits alongside the KV cache
+# and the agent; the E4B file alone (4.8GB) would not. See eval/PERF.md.
+FROM alpine:3.20 AS model
+ARG MODEL_URL=https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-UD-Q4_K_XL.gguf
+# --http1.1: HF's CDN intermittently resets HTTP/2 streams on multi-GB pulls
+# (curl exit 92); retry-all-errors + resume make the pull deterministic.
+RUN apk add --no-cache curl && \
+    curl -fL --http1.1 --retry 5 --retry-all-errors -C - -o /model.gguf "$MODEL_URL"
+
+# --- Stage 4: runtime ---
 FROM debian:bookworm-slim
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends python3-minimal ca-certificates \
+    && apt-get install -y --no-install-recommends python3-minimal libgomp1 ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && ln -sf /usr/bin/python3 /usr/local/bin/python3
-COPY --from=build /agent /usr/local/bin/agent
+COPY --from=llamabuild /build/bin/llama-server /usr/local/bin/llama-server
+COPY --from=gobuild /agent /usr/local/bin/agent
+COPY --from=model /model.gguf /models/model.gguf
+
+ENV LOCAL_MODEL_PATH=/models/model.gguf \
+    LOCAL_SERVER_BIN=/usr/local/bin/llama-server \
+    LOCAL_BASE_URL=http://127.0.0.1:8080
+
 ENTRYPOINT ["/usr/local/bin/agent"]

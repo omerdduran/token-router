@@ -169,5 +169,28 @@ regresyon testli) ve mutasyon tablosuna yön-çevirme (`<`↔`>`) eklendi.
 Regresyon: tasks.json 59, hard.json 20 çağrı — değişmedi.
 
 **Canlı ölçüm kuyruğu:** `BATCH_SIZE`, `STOP_SEQ`, `PROMPT_COMPRESS`,
-`MERGE_SYSTEM`, `GRAMMAR`, thinking-off — hepsi mock'ta accuracy ölçülemediği
+`MERGE_SYSTEM`, `GRAMMAR` — hepsi mock'ta accuracy ölçülemediği
 için varsayılan kapalı; ilk canlı Fireworks turunda tek tek A/B edilecek.
+(`REASONING_EFFORT=low` varsayılan AÇIK: düşen thinking token'ı doğrudan skor,
+red eden endpoint'e düz retry var — riski yapısal olarak sıfır.)
+
+## Re-pivot: lokal katman (2026-07-08, kural geri dönüşü sonrası)
+
+### Model boyutlandırma — 4 GB RAM / 2 vCPU grading kutusu
+
+| Aday | GGUF boyutu | Karar |
+|---|---|---|
+| gemma-4-E4B-it UD-Q4_K_XL | **4.8 GB** | ELENDİ — ağırlık dosyası tek başına RAM bütçesini aşıyor (rehber: "7B 4-bit fills the full RAM budget"; E4B de fiilen aynı sınıfta) |
+| gemma-4-E2B-it UD-Q4_K_XL | **2.97 GB** | BİRİNCİL — ağırlık + KV (ctx 4096, parallel 2) + agent + python3 için ~1 GB pay kalıyor; Docker `--memory 4g` testiyle doğrulanacak |
+| gemma-4-E2B-it Q4_0 | 2.83 GB | Yedek — XL, 4g testinde OOM olursa |
+
+llama-server ayarları buna göre: `LOCAL_CTX_SIZE=4096` (mütevazı KV),
+`LOCAL_PARALLEL=2` (2 vCPU'da fazla slot sadece thrash eder),
+`LOCAL_REQUEST_TIMEOUT=20s` (30s/istek kuralının içinde).
+
+### Mock regresyonları (lokal katman kapalıyken davranış birebir)
+
+tasks.json 59 çağrı, components.json 10 çağrı — re-pivot öncesiyle aynı.
+Lokal katman testleri: gating (nil client / kategori filtresi / pacer baskısı),
+lokal-cevap-remote'suz, format-hatası→escalation, lokal PAL→Go hesap. practice-07
+(resmî set) tek-domain çözücüyle `layer=code`, 0 token.

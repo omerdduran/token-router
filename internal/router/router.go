@@ -295,6 +295,13 @@ func (r *Router) localPlain(ctx context.Context, cat classify.Category, generic 
 	if ans == "" {
 		return "", false
 	}
+	// Logic is the highest-risk local category: a small model that never
+	// reaches its 'Answer:' line ships a truncated reasoning dump that the
+	// judge will fail. Only a short extracted conclusion may go out; a
+	// ramble escalates to the strong remote model instead.
+	if cat == classify.Logic && (len(ans) > 100 || strings.Contains(ans, "\n")) {
+		return "", false
+	}
 	if !generic && !verify.Check(cat, prompt, ans) {
 		return "", false
 	}

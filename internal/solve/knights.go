@@ -29,6 +29,10 @@ var (
 	reKKSame      = regexp.MustCompile(`(?i)^([A-Z][a-z]*) and ([A-Z][a-z]*) are (?:of )?the same(?: type)?$`)
 	reKKDiff      = regexp.MustCompile(`(?i)^([A-Z][a-z]*) and ([A-Z][a-z]*) are (?:of )?different(?: types?)?$`)
 	reKKIAm       = regexp.MustCompile(`(?i)^I am a (knight|knave)$`)
+	reKKWe        = regexp.MustCompile(`(?i)^we are (?:both|all) (knights|knaves)$`)
+	// The question often names people who never speak ("What are A and B?");
+	// they are still part of "we", so harvest them from the enumeration.
+	reKKWhoList = regexp.MustCompile(`(?:[Ww]hat (?:are|is)|each of)\s+((?:[A-Z][a-z]*)(?:(?:,\s*|,?\s+and\s+|\s+or\s+)[A-Z][a-z]*)*)`)
 	reKKAtLeast   = regexp.MustCompile(`(?i)^at least one of ([A-Z][a-z]*) and ([A-Z][a-z]*) is a (knight|knave)$`)
 	reKKExactlyOne = regexp.MustCompile(`(?i)^exactly one of ([A-Z][a-z]*) and ([A-Z][a-z]*) is a (knight|knave)$`)
 )
@@ -40,8 +44,8 @@ func SolveKnights(prompt string) (string, bool) {
 		return "", false
 	}
 	matches := reKKSays.FindAllStringSubmatch(prompt, -1)
-	if len(matches) < 2 {
-		return "", false
+	if len(matches) < 1 {
+		return "", false // single-statement puzzles are fine; uniqueness gates below
 	}
 	// Self-gate: an unquoted or unmatched "says" means a statement we did not
 	// capture — the model must handle it.
@@ -73,6 +77,14 @@ func SolveKnights(prompt string) (string, bool) {
 			addPerson(r)
 		}
 		stmts = append(stmts, kkStmt{speaker: speaker, eval: eval})
+	}
+	// Silent participants named in the question ("What are A and B?").
+	for _, m := range reKKWhoList.FindAllStringSubmatch(prompt, -1) {
+		for _, w := range regexp.MustCompile(`[A-Z][a-z]*`).FindAllString(m[1], -1) {
+			if isName(w) {
+				addPerson(w)
+			}
+		}
 	}
 	if len(persons) < 2 || len(persons) > 12 {
 		return "", false
@@ -150,6 +162,18 @@ func parseKKStatement(speaker, text string) (func(map[string]bool) bool, []strin
 	if m := reKKIAm.FindStringSubmatch(text); m != nil {
 		wantKnight := strings.EqualFold(m[1], "knight")
 		return func(a map[string]bool) bool { return a[speaker] == wantKnight }, nil, true
+	}
+	if m := reKKWe.FindStringSubmatch(text); m != nil {
+		// "We are both/all X" quantifies over every participant.
+		wantKnight := strings.EqualFold(m[1], "knights")
+		return func(a map[string]bool) bool {
+			for _, v := range a {
+				if v != wantKnight {
+					return false
+				}
+			}
+			return true
+		}, nil, true
 	}
 	if m := reKKAtLeast.FindStringSubmatch(text); m != nil {
 		x, y, wantKnight := m[1], m[2], strings.EqualFold(m[3], "knight")

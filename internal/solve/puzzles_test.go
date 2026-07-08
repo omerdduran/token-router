@@ -35,6 +35,19 @@ func TestSolveKnightsTwoPeople(t *testing.T) {
 	}
 }
 
+func TestSolveKnightsWeBoth(t *testing.T) {
+	// eval logic-2 shape: single statement, silent second participant.
+	prompt := "On an island, knights always tell the truth and knaves always lie. " +
+		"You meet two people. A says: 'We are both knaves.' What are A and B?"
+	ans, ok := SolveKnights(prompt)
+	if !ok {
+		t.Fatal("expected a solve")
+	}
+	if !strings.Contains(ans, "A is a knave") || !strings.Contains(ans, "B is a knight") {
+		t.Errorf("wrong answer: %q", ans)
+	}
+}
+
 func TestSolveKnightsDefers(t *testing.T) {
 	cases := []string{
 		// Unparseable statement form → defer.
