@@ -96,6 +96,14 @@ validate container I/O against these instead of burning a submission slot.
 - Submissions: 10 per hour per team
 - 8 categories: factual, math, sentiment, summarization, NER, code debugging, logic, code generation
 
+## ⚠️ Submission mechanics (8 Jul organizer clarification) — STRATEGY-CRITICAL
+
+- **You can update your submission any time; the leaderboard refreshes ~every 5 min.** Iterating is expected.
+- Rate limit: **10 submissions / hour / team.**
+- **ONLY the CURRENT (latest) submitted Docker image is ranked — NOT your best-ever.** There is no "keep best" safety net. Do NOT submit multiple images hoping the best sticks; the single image live in your submission at any moment is the one scored.
+- **Consequence:** the LAST image before the deadline (11 Jul 18:00 CEST) is your final score. An experimental image that regresses or fails the accuracy gate *replaces* your good rank until you re-submit a better one.
+- **Ladder rule:** iterate freely, but keep a **champion tag** (best-verified image) and always be able to re-submit it in one command. Never leave a worse/failing image as current — especially in the final hour. Endgame: submit the champion last and stop.
+
 ## Dev workflow (organizer recommendation)
 
 - **Develop and test against a local model; preserve credits.** "Keep your
