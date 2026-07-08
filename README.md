@@ -195,6 +195,7 @@ internal/task      tasks.json / results.json (atomic write)
 ## Further reading
 
 - [`slides/`](slides/) — the submission slide deck ([Slidev](https://sli.dev)): `cd slides && npm i && npm run dev`, or `npm run export` for the PDF.
+- [`video/`](video/) — the animated demo video ([Remotion](https://remotion.dev)): `cd video && npm i && npm run render` → `out/tokenrouter-demo.mp4` (~65 s, 1080p).
 - [`HACKATHON.md`](HACKATHON.md) — the Track 1 rules and scoring, consolidated.
 - [`RESEARCH.md`](RESEARCH.md) — the literature review behind the token-efficiency choices (evidence → decision).
 - [`eval/PERF.md`](eval/PERF.md) — the measurement log: every optimization, applied and measured in isolation, kept only if it helped.
