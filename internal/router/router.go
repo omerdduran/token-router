@@ -278,11 +278,20 @@ func (r *Router) localCode(ctx context.Context, cat classify.Category, prompt st
 	return ans, true
 }
 
+// reSentimentNuance marks the two sentiment shapes the small local model
+// measurably misjudges (eval/PERF.md): contrastive reviews whose dominant
+// verdict must outweigh the concession, and factual reporting that must stay
+// Neutral despite charged content words. Those go to the strong model.
+var reSentimentNuance = regexp.MustCompile(`(?i)\b(but|however|although|though|yet|while|describes?|reports?|according to)\b`)
+
 // localPlain answers the remaining categories locally when the free format
 // check passes. This is the accuracy-gate bet the new rules reward: a small
 // model's correct answer scores exactly like a Fireworks answer, for zero
 // tokens.
 func (r *Router) localPlain(ctx context.Context, cat classify.Category, generic bool, prompt string) (string, bool) {
+	if cat == classify.Sentiment && reSentimentNuance.MatchString(prompt) {
+		return "", false // measured local failure mode → strong model
+	}
 	sys, maxTok := remoteSystem[cat], localMaxTokens[cat]
 	if generic {
 		sys, maxTok = genericSystem, 120
