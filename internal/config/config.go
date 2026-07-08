@@ -91,8 +91,11 @@ type Config struct {
 	Grammar bool
 
 	// ReasoningEffort is sent on Fireworks calls ("" = don't send).
-	// Thinking tokens are scored, so "low" by default; endpoints that
-	// reject the knob get one plain retry.
+	// Thinking tokens are scored: measured live on a reasoning model,
+	// "low" still burned 31 completion tokens for a 2-token answer while
+	// "none" disabled thinking entirely (completion=2, same answer) — so
+	// "none" is the default; endpoints that reject the knob get one plain
+	// retry.
 	ReasoningEffort string
 
 	// PrefixCache pins Fireworks calls to one replica via an
@@ -140,7 +143,7 @@ func FromEnv() *Config {
 		Dedup:          envBool("DEDUP", true),
 		Grammar:        envBool("GRAMMAR", false),
 
-		ReasoningEffort: envStr("REASONING_EFFORT", "low"),
+		ReasoningEffort: envStr("REASONING_EFFORT", "none"),
 		PrefixCache:     envBool("PREFIX_CACHE", true),
 	}
 }

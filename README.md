@@ -142,7 +142,7 @@ The image bundles the Go agent, `python3` (executes and verifies generated code)
 | `LOCAL_CATEGORIES` | all | Comma list of categories allowed to answer locally |
 | `LOCAL_CTX_SIZE` / `LOCAL_PARALLEL` / `LOCAL_THREADS` | `4096` / `2` / auto | llama-server sizing for the 4 GB / 2 vCPU box |
 | `LOCAL_REQUEST_TIMEOUT` | `20s` | Per-request cap for local generations |
-| `REASONING_EFFORT` | `low` | Sent on Fireworks calls (thinking tokens are scored); `""` disables |
+| `REASONING_EFFORT` | `none` | Sent on Fireworks calls — measured live: `none` cut a reasoning model's completion from 31 to 2 tokens for the same answer; `""` disables sending |
 | `PREFIX_CACHE` | `true` | Pin Fireworks calls to one replica (session affinity) so the shared prompt prefix hits the cache discount |
 | `PUZZLE_SOLVERS` | `true` | Brute-force knights/zebra/position/assignment solvers |
 | `MUTATION_REPAIR` | `true` | Single-edit repair of buggy code before a debug call |

@@ -37,9 +37,13 @@ type Usage struct {
 }
 
 type ChatResponse struct {
-	Content      string
-	FinishReason string
-	Usage        Usage
+	Content string
+	// ReasoningContent carries a reasoning model's thinking (never part of
+	// the answer). Non-empty with an empty Content means the whole token
+	// budget went to thinking.
+	ReasoningContent string
+	FinishReason     string
+	Usage            Usage
 }
 
 // Client talks to any OpenAI-compatible chat completions endpoint
@@ -124,6 +128,12 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, erro
 		Choices []struct {
 			Message struct {
 				Content string `json:"content"`
+				// Reasoning models put their thinking here. It is never part
+				// of the answer — and when a tight max_tokens truncates
+				// mid-thought, some endpoints leak the partial reasoning into
+				// content itself (observed live), so the caller needs the
+				// finish reason to reject those.
+				ReasoningContent string `json:"reasoning_content"`
 			} `json:"message"`
 			FinishReason string `json:"finish_reason"`
 		} `json:"choices"`
@@ -138,9 +148,10 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, erro
 	c.calls.Add(1)
 	c.completionTokens.Add(int64(parsed.Usage.CompletionTokens))
 	return &ChatResponse{
-		Content:      parsed.Choices[0].Message.Content,
-		FinishReason: parsed.Choices[0].FinishReason,
-		Usage:        parsed.Usage,
+		Content:          parsed.Choices[0].Message.Content,
+		ReasoningContent: parsed.Choices[0].Message.ReasoningContent,
+		FinishReason:     parsed.Choices[0].FinishReason,
+		Usage:            parsed.Usage,
 	}, nil
 }
 
