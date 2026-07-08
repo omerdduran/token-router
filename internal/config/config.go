@@ -16,6 +16,25 @@ type Config struct {
 	InputPath  string
 	OutputPath string
 
+	// --- Local model layer (rules, 8 Jul): local inference inside the
+	// container counts toward accuracy and ZERO toward the token score.
+	// If ModelPath is set the agent spawns llama-server itself; otherwise
+	// LocalBaseURL is assumed to point at an already-running instance (dev
+	// mode). Local=false disables the layer entirely (Fireworks-only).
+	Local               bool
+	LocalBaseURL        string
+	LocalModelPath      string
+	LocalServerBin      string
+	LocalCtxSize        int
+	LocalParallel       int
+	LocalThreads        int
+	LocalExtraArgs      []string // space-separated llama-server flags for perf experiments
+	LocalRequestTimeout time.Duration
+	// LocalCategories limits which task categories may be answered locally
+	// (comma-separated; empty = all 8). Pruned by per-category accuracy
+	// measurements against the small bundled model.
+	LocalCategories []string
+
 	Workers        int
 	TotalBudget    time.Duration // hard cap is 10min; keep a safety margin
 	RequestTimeout time.Duration // per-request cap is 30s; keep a margin
@@ -70,6 +89,11 @@ type Config struct {
 	// tokens are impossible by construction. Live-only A/B (the mock and
 	// llama-server ignore/vary on the response_format field).
 	Grammar bool
+
+	// ReasoningEffort is sent on Fireworks calls ("" = don't send).
+	// Thinking tokens are scored, so "low" by default; endpoints that
+	// reject the knob get one plain retry.
+	ReasoningEffort string
 }
 
 func FromEnv() *Config {
@@ -80,6 +104,19 @@ func FromEnv() *Config {
 
 		InputPath:  envStr("INPUT_PATH", "/input/tasks.json"),
 		OutputPath: envStr("OUTPUT_PATH", "/output/results.json"),
+
+		Local:          envBool("LOCAL", true),
+		LocalBaseURL:   envStr("LOCAL_BASE_URL", "http://127.0.0.1:8080"),
+		LocalModelPath: os.Getenv("LOCAL_MODEL_PATH"),
+		LocalServerBin: envStr("LOCAL_SERVER_BIN", "llama-server"),
+		LocalCtxSize:   envInt("LOCAL_CTX_SIZE", 4096), // 4 GB RAM: modest KV cache
+		LocalParallel:  envInt("LOCAL_PARALLEL", 2),    // 2 vCPU: more slots just thrash
+		LocalThreads:   envInt("LOCAL_THREADS", 0),     // 0 = llama-server default (all cores)
+		LocalExtraArgs: strings.Fields(os.Getenv("LOCAL_EXTRA_ARGS")),
+		// A single local generation must stay well inside the 30s
+		// per-request cap on the slow 2 vCPU grading box.
+		LocalRequestTimeout: envDur("LOCAL_REQUEST_TIMEOUT", 20*time.Second),
+		LocalCategories:     splitModels(os.Getenv("LOCAL_CATEGORIES")),
 
 		Workers:        envInt("WORKERS", 4),
 		TotalBudget:    envDur("TOTAL_BUDGET", 9*time.Minute+15*time.Second),
@@ -96,6 +133,8 @@ func FromEnv() *Config {
 		SolutionLib:    envBool("SOLUTION_LIB", true),
 		Dedup:          envBool("DEDUP", true),
 		Grammar:        envBool("GRAMMAR", false),
+
+		ReasoningEffort: envStr("REASONING_EFFORT", "low"),
 	}
 }
 

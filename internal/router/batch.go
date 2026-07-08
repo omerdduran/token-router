@@ -43,7 +43,9 @@ func (r *Router) AnswerBatch(ctx context.Context, cat classify.Category, prompts
 	if cat == classify.Logic {
 		role = llm.RoleStrong
 	}
-	resp, err := r.FW.Chat(ctx, role, llm.ChatRequest{
+	// generic=true suppresses the single-answer grammar (a numbered list
+	// must not be constrained to one label); reasoning_effort still applies.
+	resp, err := r.chatConstrained(ctx, role, cat, true, llm.ChatRequest{
 		Messages:    r.messages(remoteSystem[cat]+batchInstruction, sb.String()),
 		MaxTokens:   remoteMaxTokens[cat]*len(prompts) + 32,
 		Temperature: 0,

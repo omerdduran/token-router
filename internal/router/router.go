@@ -30,6 +30,9 @@ type Router struct {
 
 	opt Options
 
+	// localCats is the parsed LocalCategories allowlist (nil = all).
+	localCats map[classify.Category]bool
+
 	// retryBudget caps second-attempt calls across the whole run (-1 =
 	// unlimited). The submission-ladder knob: step it down between
 	// leaderboard probes.
@@ -49,12 +52,41 @@ type Options struct {
 	MutationRepair bool // single-edit repair of buggy code before a debug call
 	SolutionLib    bool // canonical solutions proven against prompt examples
 	Grammar        bool // GBNF-constrained sentiment decoding
+
+	// Local is the in-container model layer (rules, 8 Jul): answers count
+	// toward accuracy and ZERO toward the token score. nil disables it.
+	Local *llm.Client
+	// LocalCategories restricts which categories may answer locally
+	// (empty = all). Pruned by per-category accuracy measurements.
+	LocalCategories []string
+
+	// ReasoningEffort is sent as reasoning_effort on Fireworks calls
+	// ("" = don't send). Thinking tokens are scored, so "low" is the
+	// default; endpoints that reject the knob get one plain retry.
+	ReasoningEffort string
 }
 
 func New(fw *llm.Fireworks, pace *Pacer, opt Options) *Router {
 	r := &Router{FW: fw, Pace: pace, opt: opt}
 	r.retryBudget.Store(int64(opt.RetryBudget))
+	if len(opt.LocalCategories) > 0 {
+		r.localCats = map[classify.Category]bool{}
+		for _, c := range opt.LocalCategories {
+			r.localCats[classify.Category(strings.TrimSpace(c))] = true
+		}
+	}
 	return r
+}
+
+// localAllowed gates the local layer: enabled, category permitted, and no
+// time pressure (local CPU generation is the slow path — under pressure the
+// pacer sends tasks straight to the fast remote endpoint, buying time with
+// tokens).
+func (r *Router) localAllowed(cat classify.Category) bool {
+	if r.opt.Local == nil || r.Pace.Mode() != ModeFull {
+		return false
+	}
+	return r.localCats == nil || r.localCats[cat]
 }
 
 // stopFor returns the category's stop sequences when the feature is enabled.
@@ -181,6 +213,91 @@ func solveBareExpression(prompt string) (string, bool) {
 	return solve.FormatNumber(v), true
 }
 
+// --- Layer 1a: local model (zero scored tokens) ---
+
+// Local answers are free for the score but cost wall-clock on the 2 vCPU
+// grading box, so completions are capped tighter than the remote tables.
+var localMaxTokens = map[classify.Category]int{
+	classify.Factual:   90,
+	classify.Math:      120,
+	classify.Sentiment: 30,
+	classify.Summarize: 90,
+	classify.NER:       100,
+	classify.CodeDebug: 350,
+	classify.Logic:     220,
+	classify.CodeGen:   350,
+}
+
+func (r *Router) localChat(ctx context.Context, cat classify.Category, sys, prompt string, maxTok int, stop []string) (*llm.ChatResponse, error) {
+	return r.opt.Local.Chat(ctx, llm.ChatRequest{
+		Model:       "local",
+		Messages:    r.messages(sys, r.compress(cat, prompt)),
+		MaxTokens:   maxTok,
+		Temperature: 0,
+		Stop:        stop,
+	})
+}
+
+// localPAL is the free twin of mathPAL: the local model emits the arithmetic
+// expression and Go evaluates it — verified by construction, zero tokens.
+func (r *Router) localPAL(ctx context.Context, prompt string) (string, bool) {
+	resp, err := r.localChat(ctx, classify.Math, palSystem, prompt, 60, []string{"\n"})
+	if err != nil {
+		return "", false
+	}
+	expr := strings.TrimSpace(resp.Content)
+	if strings.Contains(strings.ToUpper(expr), "UNSUPPORTED") || !strings.ContainsAny(expr, "+-*/^") {
+		return "", false
+	}
+	v, err := solve.EvalExpr(expr)
+	if err != nil {
+		return "", false
+	}
+	return solve.FormatNumber(v), true
+}
+
+// localCode ships a local answer only with PROOF: the generated code must
+// pass asserts derived from the prompt's own examples. No proof → escalate.
+func (r *Router) localCode(ctx context.Context, cat classify.Category, prompt string) (string, bool) {
+	asserts := solve.DeriveAsserts(prompt)
+	if len(asserts) == 0 || !looksLikePython(prompt, "def ") {
+		return "", false
+	}
+	resp, err := r.localChat(ctx, cat, remoteSystem[cat], prompt, localMaxTokens[cat], nil)
+	if err != nil {
+		return "", false
+	}
+	ans := postprocess(cat, resp.Content)
+	code := solve.ExtractCode(ans)
+	if code == "" || !r.testsPass(ctx, code, asserts) {
+		return "", false
+	}
+	return ans, true
+}
+
+// localPlain answers the remaining categories locally when the free format
+// check passes. This is the accuracy-gate bet the new rules reward: a small
+// model's correct answer scores exactly like a Fireworks answer, for zero
+// tokens.
+func (r *Router) localPlain(ctx context.Context, cat classify.Category, generic bool, prompt string) (string, bool) {
+	sys, maxTok := remoteSystem[cat], localMaxTokens[cat]
+	if generic {
+		sys, maxTok = genericSystem, 120
+	}
+	resp, err := r.localChat(ctx, cat, sys, prompt, maxTok, r.stopFor(cat))
+	if err != nil {
+		return "", false
+	}
+	ans := postprocess(cat, resp.Content)
+	if ans == "" {
+		return "", false
+	}
+	if !generic && !verify.Check(cat, prompt, ans) {
+		return "", false
+	}
+	return ans, true
+}
+
 // --- Layer 1: math via PAL ---
 
 // mathPAL asks the cheap model for a bare expression (~20 output tokens) and
@@ -188,11 +305,18 @@ func solveBareExpression(prompt string) (string, bool) {
 // is correct by construction. Falls back to a direct solve when the problem
 // isn't expressible.
 func (r *Router) mathPAL(ctx context.Context, prompt string, trace *decisionTrace) (string, error) {
+	// Free first: the local model emits the expression, Go evaluates it.
+	if r.localAllowed(classify.Math) {
+		if ans, ok := r.localPAL(ctx, prompt); ok {
+			trace.layer = "local-pal"
+			return ans, nil
+		}
+	}
 	var palStop []string
 	if r.opt.StopSeqs {
 		palStop = []string{"\n"} // the expression is one line by construction
 	}
-	resp, err := r.FW.Chat(ctx, llm.RoleGeneral, llm.ChatRequest{
+	resp, err := r.chatConstrained(ctx, llm.RoleGeneral, classify.Math, true, llm.ChatRequest{
 		Messages:    r.messages(palSystem, r.compress(classify.Math, prompt)),
 		MaxTokens:   60,
 		Temperature: 0,
@@ -231,6 +355,16 @@ func (r *Router) code(ctx context.Context, cat classify.Category, prompt string,
 				trace.codeTested = true
 				return desc + "\n\n" + fixed, nil
 			}
+		}
+	}
+
+	// Local model next — still zero tokens, but slower than the pure-code
+	// attempts above, and only a proven (assert-passing) answer ships.
+	if r.localAllowed(cat) {
+		if ans, ok := r.localCode(ctx, cat, prompt); ok {
+			trace.layer = "local-code"
+			trace.codeTested = true
+			return ans, nil
 		}
 	}
 
@@ -291,6 +425,13 @@ func (r *Router) testsPass(ctx context.Context, code string, asserts []string) b
 // --- Layer 1: everything else ---
 
 func (r *Router) plain(ctx context.Context, cat classify.Category, generic bool, prompt string, trace *decisionTrace) (string, error) {
+	// Local first: a format-checked local answer costs zero scored tokens.
+	if r.localAllowed(cat) {
+		if ans, ok := r.localPlain(ctx, cat, generic, prompt); ok {
+			trace.layer = "local"
+			return ans, nil
+		}
+	}
 	role := llm.RoleGeneral
 	if cat == classify.Logic {
 		role = llm.RoleStrong
@@ -350,23 +491,26 @@ func (r *Router) callWithNudge(ctx context.Context, role llm.Role, cat classify.
 	return postprocess(cat, resp.Content), nil
 }
 
-// chatConstrained sends the request, attaching a decoding grammar where one
-// is configured for the category. A grammar makes filler tokens impossible by
-// construction — stronger than a stop sequence, which only cuts the overflow
-// after it is generated. If the constrained request errors (endpoints vary in
-// response_format support), it retries once unconstrained so the feature can
-// never lose an answer.
+// chatConstrained sends the request with the optional decoding constraints:
+// a category grammar (filler tokens impossible by construction) and
+// reasoning_effort (thinking tokens are scored — keep them low). Endpoints
+// vary in support for both knobs, so a rejected request gets one plain
+// retry: the constraints can never lose an answer.
 func (r *Router) chatConstrained(ctx context.Context, role llm.Role, cat classify.Category, generic bool, req llm.ChatRequest) (*llm.ChatResponse, error) {
 	if r.opt.Grammar && !generic {
-		if rf := grammarFor(cat); rf != nil {
-			req.ResponseFormat = rf
-			resp, err := r.FW.Chat(ctx, role, req)
-			if err == nil {
-				return resp, nil
-			}
-			req.ResponseFormat = nil // unsupported/rejected → plain retry
-		}
+		req.ResponseFormat = grammarFor(cat)
 	}
+	if r.opt.ReasoningEffort != "" {
+		if req.Extra == nil {
+			req.Extra = map[string]any{}
+		}
+		req.Extra["reasoning_effort"] = r.opt.ReasoningEffort
+	}
+	resp, err := r.FW.Chat(ctx, role, req)
+	if err == nil || (req.ResponseFormat == nil && req.Extra == nil) {
+		return resp, err
+	}
+	req.ResponseFormat, req.Extra = nil, nil // knobs rejected → plain retry
 	return r.FW.Chat(ctx, role, req)
 }
 

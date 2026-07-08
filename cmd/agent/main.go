@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"regexp"
@@ -23,6 +24,46 @@ var reWS = regexp.MustCompile(`\s+`)
 // normalizePrompt is the dedup key: case- and whitespace-insensitive.
 func normalizePrompt(s string) string {
 	return reWS.ReplaceAllString(strings.ToLower(strings.TrimSpace(s)), " ")
+}
+
+// startLocal brings up the local model layer: spawn llama-server for the
+// bundled GGUF, or (dev mode, no model path) probe for an already-running
+// server. Local inference counts toward accuracy and zero toward the token
+// score, but the layer is strictly optional — any failure here degrades to
+// Fireworks-only instead of risking the run.
+func startLocal(ctx context.Context, cfg *config.Config) (*llm.Client, func()) {
+	if !cfg.Local {
+		return nil, func() {}
+	}
+	if cfg.LocalModelPath == "" {
+		probe := &http.Client{Timeout: 2 * time.Second}
+		resp, err := probe.Get(cfg.LocalBaseURL + "/health")
+		if err != nil {
+			log.Printf("local: no model bundled and no server at %s — Fireworks-only", cfg.LocalBaseURL)
+			return nil, func() {}
+		}
+		resp.Body.Close()
+		log.Printf("local: using running server at %s", cfg.LocalBaseURL)
+		return llm.NewClient(cfg.LocalBaseURL, "", cfg.LocalRequestTimeout), func() {}
+	}
+	// Model load must finish well inside the 60s container-start budget.
+	sctx, cancel := context.WithTimeout(ctx, 55*time.Second)
+	defer cancel()
+	srv, err := llm.StartLocal(sctx, llm.LocalOptions{
+		Bin:       cfg.LocalServerBin,
+		ModelPath: cfg.LocalModelPath,
+		BaseURL:   cfg.LocalBaseURL,
+		CtxSize:   cfg.LocalCtxSize,
+		Parallel:  cfg.LocalParallel,
+		Threads:   cfg.LocalThreads,
+		ExtraArgs: cfg.LocalExtraArgs,
+	})
+	if err != nil {
+		log.Printf("local: %v — continuing Fireworks-only", err)
+		return nil, func() {}
+	}
+	log.Printf("local: llama-server ready (%s)", cfg.LocalModelPath)
+	return llm.NewClient(cfg.LocalBaseURL, "", cfg.LocalRequestTimeout), srv.Stop
 }
 
 func main() {
@@ -80,16 +121,21 @@ func main() {
 		llm.NewClient(cfg.FireworksBaseURL, cfg.FireworksAPIKey, cfg.RequestTimeout),
 		cfg.AllowedModels,
 	)
+	localClient, stopLocal := startLocal(ctx, cfg)
+	defer stopLocal()
 	deadline, _ := ctx.Deadline()
 	r := router.New(fw, router.NewPacer(deadline, len(tasks)), router.Options{
-		RetryBudget:    cfg.RetryBudget,
-		StopSeqs:       cfg.StopSeqs,
-		PuzzleSolvers:  cfg.PuzzleSolvers,
-		PromptCompress: cfg.PromptCompress,
-		MergeSystem:    cfg.MergeSystem,
-		MutationRepair: cfg.MutationRepair,
-		SolutionLib:    cfg.SolutionLib,
-		Grammar:        cfg.Grammar,
+		RetryBudget:     cfg.RetryBudget,
+		StopSeqs:        cfg.StopSeqs,
+		PuzzleSolvers:   cfg.PuzzleSolvers,
+		PromptCompress:  cfg.PromptCompress,
+		MergeSystem:     cfg.MergeSystem,
+		MutationRepair:  cfg.MutationRepair,
+		SolutionLib:     cfg.SolutionLib,
+		Grammar:         cfg.Grammar,
+		Local:           localClient,
+		LocalCategories: cfg.LocalCategories,
+		ReasoningEffort: cfg.ReasoningEffort,
 	})
 
 	// Dedup pre-pass: normalized-identical prompts are answered once; the
@@ -198,5 +244,9 @@ func main() {
 		os.Exit(1)
 	}
 	log.Printf("%s", fw.Summary())
+	if localClient != nil {
+		lc, lt := localClient.Stats()
+		log.Printf("local: %d calls, %d completion tokens (scored: 0)", lc, lt)
+	}
 	log.Printf("done: %d tasks in %s", len(tasks), time.Since(start).Round(time.Millisecond))
 }
