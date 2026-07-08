@@ -28,15 +28,13 @@ func fakeChat(t *testing.T, content string, calls *atomic.Int64) *httptest.Serve
 	}))
 }
 
-func testRouter(local, remote *httptest.Server, cats []string) (*Router, *atomic.Int64) {
-	var remoteCalls atomic.Int64
-	_ = remoteCalls
+func testRouter(local, remote *httptest.Server, cats []string) *Router {
 	fw := llm.NewFireworks(llm.NewClient(remote.URL, "", 5*time.Second), []string{"gemma-4-26b-a4b-it"})
 	opt := Options{RetryBudget: -1, LocalCategories: cats}
 	if local != nil {
 		opt.Local = llm.NewClient(local.URL, "", 5*time.Second)
 	}
-	return New(fw, nil, opt), &remoteCalls
+	return New(fw, nil, opt)
 }
 
 func TestLocalAllowedGating(t *testing.T) {
@@ -45,19 +43,19 @@ func TestLocalAllowedGating(t *testing.T) {
 	defer remote.Close()
 
 	// No local client → never allowed.
-	r, _ := testRouter(nil, remote, nil)
+	r := testRouter(nil, remote, nil)
 	if r.localAllowed(classify.Sentiment) {
 		t.Error("nil local client must disable the layer")
 	}
 	// Local client, no category filter → all allowed.
 	local := fakeChat(t, "y", &n)
 	defer local.Close()
-	r, _ = testRouter(local, remote, nil)
+	r = testRouter(local, remote, nil)
 	if !r.localAllowed(classify.Sentiment) || !r.localAllowed(classify.CodeGen) {
 		t.Error("empty LocalCategories must allow all categories")
 	}
 	// Category filter restricts.
-	r, _ = testRouter(local, remote, []string{"sentiment", "factual"})
+	r = testRouter(local, remote, []string{"sentiment", "factual"})
 	if !r.localAllowed(classify.Sentiment) || r.localAllowed(classify.CodeGen) {
 		t.Error("LocalCategories filter not applied")
 	}
