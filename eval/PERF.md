@@ -289,6 +289,35 @@ arithmetic expression without checking it models the problem — E2B happens to
 be reliable here, but a future hardening could cross-check two independent PAL
 samples. Not pursued now.)
 
+## First LIVE Fireworks smoke test (2026-07-08, personal key, stand-in models)
+
+The hackathon's exact model IDs exist only behind the harness proxy; the
+personal account serves other serverless models, so a reasoning model
+(kimi-k2p6) stood in for all roles — which is exactly what made the test
+valuable. All measured live:
+
+1. **Reasoning tokens are billed as completion tokens.** At
+   `reasoning_effort=low` the model spent **31** completion tokens producing a
+   2-token answer; with a tight `max_tokens` the truncated thinking **leaked
+   into the content field**. `reasoning_effort=none` disabled thinking
+   entirely: completion **31 → 2 (15×)**, identical answer. → Default changed
+   to `none` (plain-retry fallback covers endpoints that reject it); the
+   client now parses `reasoning_content` separately so thinking is never
+   mistaken for an answer.
+2. **Prefix caching is real and measurable:** two identical-prefix calls with
+   the `x-session-affinity` header → `cached_tokens` **0 → 54 of 62** on the
+   second call. The PREFIX_CACHE design is confirmed against the live API.
+3. **Official practice set end-to-end (remote-only, LOCAL=0):** 8/8 answered,
+   valid schema, 5.3 s, 7 calls / **598 tokens**. Real PAL returned the exact
+   expected 144 (unmeasurable on the mock); the remote tier corrected the one
+   fact the local tier gets wrong (practice-01 Lake Burley Griffin),
+   validating the escalation design. practice-07 stayed at 0 tokens (solver).
+
+**Verdict: the baseline image is submission-ready.** Caveat: Pick() role
+separation (Gemma-vs-Kimi) could not be exercised — the harness's own
+ALLOWED_MODELS resolve that at eval time; the fallback path it uses here is
+itself now live-tested.
+
 ### Docker functional validation (amd64 image, `--memory 4g --cpus 2`)
 
 Image: **3.14 GB** uncompressed (well under the 10 GB compressed limit).
