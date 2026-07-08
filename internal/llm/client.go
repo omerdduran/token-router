@@ -48,6 +48,10 @@ type Client struct {
 	BaseURL string
 	APIKey  string
 	HTTP    *http.Client
+	// Headers are attached to every request — used to pin Fireworks calls to
+	// one replica (x-session-affinity) so the automatic prefix cache hits and
+	// the shared system-prompt prefix is billed at the discount.
+	Headers map[string]string
 
 	calls            atomic.Int64
 	completionTokens atomic.Int64
@@ -98,6 +102,9 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, erro
 	httpReq.Header.Set("Content-Type", "application/json")
 	if c.APIKey != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+c.APIKey)
+	}
+	for k, v := range c.Headers {
+		httpReq.Header.Set(k, v)
 	}
 
 	resp, err := c.HTTP.Do(httpReq)

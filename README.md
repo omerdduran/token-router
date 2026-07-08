@@ -71,6 +71,7 @@ Every category walks the same ladder — plain code, then the free local model, 
 - **Duplicate-task dedup** (`DEDUP`) — normalized-identical prompts are answered once and copied; the same question is never paid for twice.
 - **Bundled local tier** (`LOCAL`) — an in-container Gemma 4 E2B answers verified tasks for zero scored tokens; the pacer skips this slow CPU tier under deadline pressure, buying time with tokens instead.
 - **Low reasoning effort** (`REASONING_EFFORT`) — thinking tokens are scored like any others, so remote calls request `reasoning_effort: low`, with a plain retry when an endpoint rejects the knob.
+- **Prefix-cache affinity** (`PREFIX_CACHE`) — Fireworks discounts cached prompt prefixes (default 50%); a stable `x-session-affinity` header pins every call to one replica so the shared per-category system prompt stays cache-warm. Routing-only, no accuracy impact.
 - **PAL for math** — the model translates a word problem into an expression; Go does the arithmetic, so it can't be wrong and costs a fraction of a worked solution.
 - **Execution-based code verification** — asserts are derived from the prompt's stated examples and run locally; the paid specialist retry fires only when tests actually fail.
 - **Terse category prompts + per-category `max_tokens`** — every scored token is deliberate; no filler, no preamble.
@@ -142,6 +143,7 @@ The image bundles the Go agent, `python3` (executes and verifies generated code)
 | `LOCAL_CTX_SIZE` / `LOCAL_PARALLEL` / `LOCAL_THREADS` | `4096` / `2` / auto | llama-server sizing for the 4 GB / 2 vCPU box |
 | `LOCAL_REQUEST_TIMEOUT` | `20s` | Per-request cap for local generations |
 | `REASONING_EFFORT` | `low` | Sent on Fireworks calls (thinking tokens are scored); `""` disables |
+| `PREFIX_CACHE` | `true` | Pin Fireworks calls to one replica (session affinity) so the shared prompt prefix hits the cache discount |
 | `PUZZLE_SOLVERS` | `true` | Brute-force knights/zebra/position/assignment solvers |
 | `MUTATION_REPAIR` | `true` | Single-edit repair of buggy code before a debug call |
 | `SOLUTION_LIB` | `true` | Canonical solutions proven against prompt examples |

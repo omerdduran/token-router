@@ -12,7 +12,9 @@ import (
 
 func TestChatBodySerialization(t *testing.T) {
 	var got map[string]any
+	var gotAffinity string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAffinity = r.Header.Get("x-session-affinity")
 		raw, _ := io.ReadAll(r.Body)
 		var parsed map[string]any
 		_ = json.Unmarshal(raw, &parsed)
@@ -23,6 +25,7 @@ func TestChatBodySerialization(t *testing.T) {
 	defer srv.Close()
 
 	c := NewClient(srv.URL, "", 5*time.Second)
+	c.Headers = map[string]string{"x-session-affinity": "tokenrouter"}
 	_, err := c.Chat(context.Background(), ChatRequest{
 		Model:          "m",
 		Messages:       []Message{{Role: "user", Content: "hi"}},
@@ -43,6 +46,9 @@ func TestChatBodySerialization(t *testing.T) {
 	rf, ok := got["response_format"].(map[string]any)
 	if !ok || rf["type"] != "grammar" {
 		t.Errorf("response_format missing or wrong: %v", got["response_format"])
+	}
+	if gotAffinity != "tokenrouter" {
+		t.Errorf("x-session-affinity header = %q, want tokenrouter", gotAffinity)
 	}
 
 	// And absent when unset — a stray null field could 400 on strict servers.

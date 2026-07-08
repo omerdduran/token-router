@@ -117,10 +117,13 @@ func main() {
 		os.Exit(0)
 	}()
 
-	fw := llm.NewFireworks(
-		llm.NewClient(cfg.FireworksBaseURL, cfg.FireworksAPIKey, cfg.RequestTimeout),
-		cfg.AllowedModels,
-	)
+	fwClient := llm.NewClient(cfg.FireworksBaseURL, cfg.FireworksAPIKey, cfg.RequestTimeout)
+	if cfg.PrefixCache {
+		// A stable per-run affinity value routes every call to the same
+		// replica so the shared prompt prefix stays cache-warm.
+		fwClient.Headers = map[string]string{"x-session-affinity": "tokenrouter"}
+	}
+	fw := llm.NewFireworks(fwClient, cfg.AllowedModels)
 	localClient, stopLocal := startLocal(ctx, cfg)
 	defer stopLocal()
 	deadline, _ := ctx.Deadline()

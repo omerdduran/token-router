@@ -94,6 +94,12 @@ type Config struct {
 	// Thinking tokens are scored, so "low" by default; endpoints that
 	// reject the knob get one plain retry.
 	ReasoningEffort string
+
+	// PrefixCache pins Fireworks calls to one replica via an
+	// x-session-affinity header so the automatic prefix cache hits and the
+	// shared per-category system prompt is billed at Fireworks' discount
+	// (default 50%). Routing-only, no accuracy impact — on by default.
+	PrefixCache bool
 }
 
 func FromEnv() *Config {
@@ -135,6 +141,7 @@ func FromEnv() *Config {
 		Grammar:        envBool("GRAMMAR", false),
 
 		ReasoningEffort: envStr("REASONING_EFFORT", "low"),
+		PrefixCache:     envBool("PREFIX_CACHE", true),
 	}
 }
 
