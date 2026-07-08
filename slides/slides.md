@@ -32,49 +32,36 @@ AMD Developer Hackathon: ACT II · Track 1
 </div>
 
 ---
-layout: fact
+layout: center
+class: text-center
 ---
 
-# tokens = score
-
-<div class="text-xl mt-4 opacity-80 max-w-150 mx-auto">
-
-Track 1 ranks agents by **fewest Fireworks tokens** —<br>
-after an LLM judge verifies every answer.
-
-</div>
+# One agent, eight task categories.<br>Two-thirds of the time, it pays <span class="text-orange-400">nothing</span>.
 
 <v-click>
 
-<div class="mt-10 text-2xl">
+<div class="mt-8 text-xl opacity-90 max-w-170 mx-auto">
 
-Everything inside the container is <span class="text-orange-400 font-bold">free</span>.<br>
-Every API token is a <span class="text-orange-400 font-bold">purchase</span>.
+Math, logic, code, facts, sentiment, NER, summaries — TokenRouter answers them all,
+but treats every API token as a <b>purchase that requires evidence</b>:
+it proves an answer with free computation first, and buys one
+only on a <b>proven</b> miss. Never on a hunch.
 
 </div>
 
 </v-click>
 
----
-layout: quote
----
+<v-click>
 
-# “Never pay for what you can prove for free.”
+<div class="mt-10 text-lg">
 
-<div class="mt-8 text-lg opacity-80">
-
-TokenRouter treats every scored token as a purchase that requires **evidence**:<br>
-it escalates to a paid call only on a <b>proven</b> local miss — never on a hunch.
-
-</div>
-
-<div class="mt-8 text-lg">
-
-And the golden rule of the free tiers:<br>
+The golden rule of its free tiers:<br>
 <span class="text-orange-400 text-2xl font-bold">no proof → no answer → escalate.</span><br>
 <span class="opacity-70">A wrong free answer is structurally impossible.</span>
 
 </div>
+
+</v-click>
 
 ---
 
@@ -334,7 +321,7 @@ kept only if it helped. Unproven features ship behind default-off flags.
 
 ---
 
-# Built for a one-shot grader
+# It cannot crash, stall, or emit bad JSON
 
 <div class="grid grid-cols-2 gap-x-10 mt-6 text-[0.95rem]">
 
