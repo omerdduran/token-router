@@ -1,116 +1,123 @@
-# AMD Developer Hackathon: ACT II — Track 1 Bilgi Dosyası
+# AMD Developer Hackathon: ACT II — Track 1 Fact File
 
-Tek doğruluk kaynağı: kurallar, skorlama, kısıtlar ve organizatör açıklamaları.
-Son güncelleme: 8 Temmuz 2026 (güncel resmî Participant Guide + Steve/lablab duyurusu).
+Single source of truth: rules, scoring, constraints, and organizer clarifications.
+Last updated: 8 July 2026 (current official Participant Guide + Steve/lablab announcement).
 
-## Künye
+## At a glance
 
 - **Track 1:** "Hybrid Token-Efficient Routing Agent" / "General-Purpose AI Agent"
-- **Deadline:** 11 Temmuz 2026, 18:00 CEST (Cuma)
-- **Ödüller:** 1. $2.500 · 2. $1.500 · 3. $1.000 + Track 1'e özel **$1.000 "Best Use of Gemma via Fireworks"**
-- **Leaderboard:** https://lablab.ai/ai-hackathons/amd-developer-hackathon-act-ii/live?track=1#amd-leaderboard (7 Tem itibarıyla boş — henüz değerlendirilen submission yok)
+- **Deadline:** 11 July 2026, 18:00 CEST (Friday)
+- **Prizes:** 1st $2,500 · 2nd $1,500 · 3rd $1,000 + Track 1 side prize: **$1,000 "Best Use of Gemma via Fireworks"**
+- **Leaderboard:** https://lablab.ai/ai-hackathons/amd-developer-hackathon-act-ii/live?track=1#amd-leaderboard
 
-## Skorlama
+## Scoring
 
-1. **Accuracy gate:** LLM-judge her cevabı "expected intent"e göre puanlar. Eşiğin altındakiler leaderboard'a giremez. Eşik değeri gizli.
-2. **Token sıralaması:** Gate'i geçenler, judging proxy'nin kaydettiği **toplam token**a (prompt + completion) göre artan sıralanır. Az token = üst sıra. (Fiyat değil, ham token sayısı.)
+1. **Accuracy gate:** an LLM judge scores every answer against the "expected intent". Submissions below the threshold don't enter the leaderboard. The threshold is hidden.
+2. **Token ranking:** gate-passing submissions are ranked ascending by **total tokens** (prompt + completion) recorded by the judging proxy. Fewer tokens = higher rank. (Raw token count, not price.)
 
-### ⚠️ Token (skor) ≠ Dolar (kredi) — karıştırma
-| | Neyi ölçer | Neye bağlı | Etkilediği |
+### ⚠️ Tokens (score) ≠ dollars (credits) — don't conflate
+| | Measures | Depends on | Affects |
 |---|---|---|---|
-| **Skor/sıralama** | toplam **token** | kaç token gönderip aldığın | leaderboard sıran |
-| **Kredi maliyeti** | harcanan **$** | model başına $/token | $50 dev bütçen |
+| **Score/rank** | total **tokens** | how many tokens you send and receive | your leaderboard position |
+| **Credit cost** | **$** spent | per-model $/token | your $50 dev budget only |
 
-Model seçimi **skor açısından ~nötr** (3 Gemma aynı tokenizer → aynı string = aynı token; fark sadece gevezelik + retry sayısı). Model seçimi **dolar açısından farklı** (Kimi ~$0.95/$4.00, MiniMax ~$0.30/$1.20, Gemma ucuz per 1M) → sadece dev kredisini ilgilendirir, skoru değil.
+Model choice is **~neutral for the score** (the three Gemmas share one tokenizer → same string = same tokens; the difference is only chattiness + retry count). Model choice **does differ in dollars** (Kimi ~$0.95/$4.00, MiniMax ~$0.30/$1.20, Gemma cheap per 1M) → that affects dev credits only, not the score.
 
-## ⚠️⚠️ KURAL GERİ DÖNÜŞÜ (8 Tem, RESMÎ Participant Guide + Steve/lablab duyurusu)
+## ⚠️⚠️ RULES REVERSAL (8 Jul, OFFICIAL Participant Guide + Steve/lablab announcement)
 
-7 Tem'deki "lokal model bundle yasak" Discord açıklaması **resmen tersine döndü.**
-Güncel rehber (Rules bölümü) — bağlayıcı metin:
+The 7 Jul Discord statement "local models cannot be bundled" was **officially reversed.**
+The current guide (Rules section) — binding text:
 
 > **"Local models and tokens used locally count as zero for the final score;
 > all Fireworks API calls must go through FIREWORKS_BASE_URL; local model
 > inference inside the container is permitted and counts toward accuracy,
 > but not toward the token score."**
 
-- **Lokal model = geçerli skor stratejisi.** Lokal cevap doğruysa accuracy'ye tam
-  sayılır ve 0 Fireworks token'ı — "the best possible outcome for ranking" (Steve).
-- `ZERO_API_CALLS` işareti hata değil, açıkça **geçerli strateji** (rehber, s.6).
-- **Grading ortamı: 4 GB RAM, 2 vCPU** (CPU-only). Rehber boyutlandırması:
-  2B–3B 4-bit quantized güvenli; 7B 4-bit tüm RAM'i doldurur (agent koduna yer kalmaz).
-- **Ollama/runtime önyüklü DEĞİL** — model ağırlıkları doğrudan imaja gömülmeli
-  (10GB sıkıştırılmış limit içinde).
-- Harness kendi `FIREWORKS_API_KEY`'ini enjekte eder — kendi key'ini imaja koyma
-  (.env sadece lokal dev için).
-- 7 Tem'den geçerliliğini koruyanlar: koşullu model seçimi serbest; düz-kod
-  çözücüler meşru ("plain code = zero tokens"); tüm Fireworks çağrıları
-  `FIREWORKS_BASE_URL` üzerinden.
+- **A local model is a valid scoring strategy.** A correct local answer counts
+  fully toward accuracy at 0 Fireworks tokens — "the best possible outcome for
+  ranking" (Steve).
+- The `ZERO_API_CALLS` marker is not a failure but an explicitly **valid strategy** (guide, p.6).
+- **Grading environment: 4 GB RAM, 2 vCPU** (CPU-only). Guide sizing: 2B–3B
+  4-bit quantized models are safe; 7B 4-bit fills the entire RAM budget
+  (leaving no room for agent code).
+- **No Ollama/runtime pre-installed** — model weights must be baked directly
+  into the image (within the 10 GB compressed limit).
+- The harness injects its own `FIREWORKS_API_KEY` — do not bundle your own key
+  (.env is for local dev only).
+- Still valid from 7 Jul: conditional model selection is allowed; plain-code
+  solvers are legitimate ("plain code = zero tokens"); all Fireworks calls go
+  through `FIREWORKS_BASE_URL`.
 
-**Güncel kazanma formülü:** düz kodla çözüleni kodla çöz (0 token) → kalanını
-**imaja gömülü küçük lokal modelle** cevapla (0 token, accuracy'ye sayılır) →
-yalnızca lokal cevabın gate'i geçemeyeceği kanıtlanan/riskli görevleri Fireworks'e
-minimum token'la yönlendir. Teorik en iyi skor: gate'i geçen `ZERO_API_CALLS`.
+**Current winning formula:** solve what plain code can solve in code (0 tokens)
+→ answer the rest with a **small local model baked into the image** (0 tokens,
+counts toward accuracy) → route only tasks whose local answer provably cannot
+pass the gate (or is too risky) to Fireworks with minimal tokens. Theoretical
+best score: a gate-passing `ZERO_API_CALLS` run.
 
-### Troubleshooting statüleri (rehber)
+### Failure statuses (guide)
 
-`PULL_ERROR` (amd64 manifest eksik) · `RUNTIME_ERROR` (non-zero exit) ·
-`TIMEOUT` (>10 dk) · `OUTPUT_MISSING` · `INVALID_RESULTS_SCHEMA` ·
-`MODEL_VIOLATION` (liste dışı Fireworks modeli) · `IMAGE_TOO_LARGE` ·
-`ACCURACY_GATE_FAILED`. Leaderboard ~5 dk'da güncellenir (şimdilik sadece rank).
+`PULL_ERROR` (missing amd64 manifest) · `RUNTIME_ERROR` (non-zero exit) ·
+`TIMEOUT` (>10 min) · `OUTPUT_MISSING` · `INVALID_RESULTS_SCHEMA` ·
+`MODEL_VIOLATION` (non-listed Fireworks model) · `IMAGE_TOO_LARGE` ·
+`ACCURACY_GATE_FAILED`. Leaderboard refreshes in ~5 min (currently shows rank only).
 
-### Resmî practice görevleri (gerçek set DEĞİL — rehber, s.3)
+### Official practice tasks (NOT the real set — guide, p.3)
 
-8 örnek: iki-parçalı factual (capital+su kütlesi), %+mutlak karışık math,
-kontrastlı sentiment, tek-cümle özet, NER (kişi+şirket+yer+görece tarih),
-`get_max(nums): return nums[0]` debug, **TEK-domain pet bulmacası** (Sam/Jo/Lee —
-zebra çözücümüz iki-domain istiyor: kapsam boşluğu!), second-largest-with-duplicates
-codegen. → eval'e eklenmeli; container I/O'yu bunlarla doğrula, submission slotu yakma.
+8 examples: two-part factual (capital + body of water), mixed percent+absolute
+math, contrastive sentiment, one-sentence summary, NER (person + company +
+location + relative date), `get_max(nums): return nums[0]` debugging, a
+**single-domain pet puzzle** (Sam/Jo/Lee — covered by our single-assignment
+solver), second-largest-with-duplicates codegen. → Bundled in `eval/practice.json`;
+validate container I/O against these instead of burning a submission slot.
 
-## ALLOWED_MODELS (Track 1, launch günü yayınlandı)
+## ALLOWED_MODELS (Track 1, published on launch day)
 
-| Model | Karakter | Bizim kullanım |
+| Model | Character | Our use |
 |---|---|---|
-| `gemma-4-26b-a4b-it` | MoE 25.2B/3.8B aktif, thinking kapatılabilir | Birincil (ucuz/az laf) |
-| `gemma-4-31b-it` | Dense 30.7B, thinking kapatılabilir | Zor görevler |
-| `gemma-4-31b-it-nvfp4` | 31B'nin FP4 quantized hali | Yedek |
-| `kimi-k2p7-code` | 1T kod modeli, reasoning-ağır | Kod son çare (thinking token'ları skora yazılır!) |
-| `minimax-m3` | 428B MoE, thinking toggle | Mümkünse hiç |
+| `gemma-4-26b-a4b-it` | MoE 25.2B/3.8B active, thinking can be disabled | Primary (cheap/terse) |
+| `gemma-4-31b-it` | Dense 30.7B, thinking can be disabled | Hard tasks |
+| `gemma-4-31b-it-nvfp4` | FP4-quantized 31B | Backup |
+| `kimi-k2p7-code` | 1T code model, reasoning-heavy | Code last resort (thinking tokens are scored!) |
+| `minimax-m3` | 428B MoE, thinking toggle | Avoid if possible |
 
-## Container sözleşmesi
+## Container contract
 
-- Girdi: `/input/tasks.json` → `[{"task_id","prompt"}]`
-- Çıktı: `/output/results.json` → `[{"task_id","answer"}]` (geçerli JSON şart; bozuksa 0 puan)
-- Env (harness enjekte eder, hardcode yasak): `FIREWORKS_API_KEY`, `FIREWORKS_BASE_URL` (tüm çağrılar buradan; bypass eden çağrı kaydedilmez), `ALLOWED_MODELS` (virgülle ayrık)
-- Exit 0 = başarı; hata durumunda non-zero
+- Input: `/input/tasks.json` → `[{"task_id","prompt"}]`
+- Output: `/output/results.json` → `[{"task_id","answer"}]` (valid JSON required; malformed = 0 points)
+- Env (injected by the harness, hardcoding forbidden): `FIREWORKS_API_KEY`, `FIREWORKS_BASE_URL` (all calls through here; bypassing calls are unrecorded), `ALLOWED_MODELS` (comma-separated)
+- Exit 0 on success; non-zero on failure
 
-## Limitler ve kurallar
+## Limits and rules
 
-- İmaj: public registry'de, **linux/amd64 manifest** şart, sıkıştırılmış ≤ 10GB
-- Başlama: ≤ 60 sn · Toplam koşum: ≤ 10 dk · İstek başına yanıt: ≤ 30 sn
-- Cevaplar İngilizce
-- Hardcode/cache yasak — değerlendirme görülmemiş prompt varyantları kullanır
-- Submission: saatte 10 / takım
-- 8 kategori: factual, math, sentiment, summarization, NER, code debugging, logic, code generation
+- Image: public registry, **linux/amd64 manifest** required, compressed ≤ 10 GB
+- Startup: ≤ 60 s · Total runtime: ≤ 10 min · Per-request response: ≤ 30 s
+- Answers in English
+- No hardcoding/caching answers — evaluation uses unseen prompt variants
+- Submissions: 10 per hour per team
+- 8 categories: factual, math, sentiment, summarization, NER, code debugging, logic, code generation
 
-## Dev workflow (organizatör önerisi)
+## Dev workflow (organizer recommendation)
 
-- **Geliştirme/testi lokal modelle yap, krediyi koru.** "Keep your development and
-  testing off the Fireworks API unless you want to buy more credits." Çözüm kriteri
-  tutturunca (önce accuracy, sonra en az token) Fireworks'e geç.
-- Uygulama: submission imajı Fireworks-only kalır; AMA aynı binary env ile lokal
-  llama-server'a yönlendirilebilir (`FIREWORKS_BASE_URL=localhost:8080`,
-  `ALLOWED_MODELS=local`). Client endpoint-agnostik. Dev/A-B testleri bedava lokal
-  Gemma'da, sadece final doğrulama Fireworks'te.
-- Uyarı: lokal Gemma E4B < gerçek Fireworks Gemma 31B. Lokal test → routing/format/
-  token-sayısı güvenilir; kesin accuracy + tam token → küçük gerçek-Fireworks turu.
+- **Develop and test against a local model; preserve credits.** "Keep your
+  development and testing off the Fireworks API unless you want to buy more
+  credits." Switch to Fireworks once the solution meets the bar (accuracy
+  first, then fewest tokens).
+- In practice: the same binary points at a local llama-server via env
+  (`FIREWORKS_BASE_URL=localhost:8080`, `ALLOWED_MODELS=local`). The client is
+  endpoint-agnostic. Dev/A-B runs on free local Gemma; only final validation
+  hits Fireworks.
+- Caveat: local small Gemma < real Fireworks Gemma 31B. Local tests are
+  reliable for routing/format/token counts; exact accuracy + exact tokens need
+  a small real-Fireworks pass.
 
-## Kaynaklar / erişimler
+## Resources / access
 
-- Fireworks: $50 hackathon kredisi (+ yeni ADP üyelerine $50) — Gemma modelleri app.fireworks.ai'da; organizatör Gemma 4 E4B deployment'ının $7/saat olduğunu söyledi (dev/deneme için)
-- AMD AI Notebooks: team-2678, günde 4 saat GPU (ROCm/vLLM veya Unsloth+llama.cpp imajları) — Track 1 submission'ı için artık gerekli değil, Track 1 dışı deney/dev aracı
-- Takım: 2 üye (me@omerduran.dev + amd.shelter597@passmail.net)
+- Fireworks: $50 hackathon credits (+$50 for new ADP members) — Gemma models on app.fireworks.ai; the organizers quoted a Gemma 4 E4B deployment at $7/hour (for dev/experiments)
+- AMD AI Notebooks: team-2678, 4 GPU-hours/day (ROCm/vLLM or Unsloth+llama.cpp images) — no longer needed for the Track 1 submission itself; an x86 test bench for perf validation
+- Team: 2 members (me@omerduran.dev + amd.shelter597@passmail.net)
 
-## Zaman çizelgesi / durum notları
+## Timeline / status notes
 
-- 7 Tem: ALLOWED_MODELS öğrenildi; lokal-first mimari kuruldu ve eval'lerle %90-97 lokal accuracy ölçüldü; ardından organizatör açıklamasıyla lokal model yasağı öğrenildi → **Fireworks-only mimariye pivot** (bkz. görev listesi #11). Leaderboard hâlâ boş — kimse geçerli submission atmadan öğrenmiş olduk.
-- 8 Tem: Resmî rehber güncellendi — **lokal model yasağı tersine döndü** (yukarıdaki bölüm). Pre-pivot lokal-first mimari (git geçmişinde) yeniden kazanan strateji; 4GB/2vCPU'ya göre yeniden boyutlandırılacak (E4B yerine muhtemelen 2B-3B Q4). Track 1 scoring pipeline canlı. 7 rakip repo analiz edildi (bkz. hafıza/rakip notları): hiçbirinde kanıt-kapılı düz-kod cevap yok; en ciddi rakip frugal-router (lokal GGUF beyin + draft-confirm) — yeni kural onların mimarisini de meşrulaştırdı.
+- 7 Jul: ALLOWED_MODELS learned; local-first architecture built and measured at 90–97% local accuracy on our evals; then the organizer statement banned bundled local models → **pivot to a Fireworks-only architecture** (task list #11). The leaderboard was still empty — nobody had a scored submission before the rules settled.
+- 8 Jul: The official guide was updated — **the local-model ban was reversed** (section above). The pre-pivot local-first architecture (preserved in git history) is the winning strategy again; resized for 4 GB/2 vCPU (E2B instead of E4B). Track 1 scoring pipeline is live. 7 rival repos analyzed (see memory/rival notes): none ship proof-gated plain-code answers; the most serious rival is frugal-router (local GGUF brain + draft-confirm) — the new rule legitimizes their architecture too.
+- 8 Jul (cont.): **Re-pivot complete** — the local tier is back (E2B Q4_K_XL 2.97 GB; the E4B file was eliminated at 4.8 GB). Host e2e: Fireworks calls tasks 59→23, hard 20→7. Two measured local failure modes closed (logic rambles → escalate; nuanced sentiment → strong model). The official practice set is in eval; a single-domain solver covers practice-07 for 0 tokens. Remaining: Docker 4g/2cpu functional validation + GHCR push (waiting on the GitHub repo) + the submission ladder.

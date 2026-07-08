@@ -1,83 +1,94 @@
-# Token-Minimizasyon Araştırma Notları (kanıt → karar)
+# Token-Minimization Research Notes (evidence → decision)
 
-Derin araştırma (2023–2026 literatürü, çapraz-doğrulamalı). Her bulgu bizim
-Fireworks-only mimariye somut bir karara bağlandı. Skor = accuracy gate + en az
-toplam token; lokal kod bedava.
+Deep research pass (2023–2026 literature, cross-verified). Every finding is
+tied to a concrete decision for our architecture. Score = accuracy gate +
+fewest total tokens; work done inside the container is free.
 
-## Doğrulanmış bulgular ve kararları
+## Verified findings and their decisions
 
-### 1. PAL/PoT = en yüksek kaldıraç (KANITLANDI 3-0, arxiv 2211.10435)
-Math'i Python'a offload etmek PaLM-540B CoT'u GSM8K'de +6.4pt (aynı model) geçiyor.
-→ **ZATEN YAPIYORUZ** (mathPAL). Karar: EvalExpr'i genişlet (sqrt/abs/yüzde) → daha
-çok problem PAL'e uysun, direct-solve fallback azalsın.
+### 1. PAL/PoT is the highest-leverage technique (CONFIRMED 3-0, arxiv 2211.10435)
+Offloading math to Python beats PaLM-540B CoT by +6.4pt on GSM8K (same model).
+→ **ALREADY DOING IT** (mathPAL). Decision: extend EvalExpr (sqrt/abs/percent)
+so more problems fit PAL and fewer fall back to direct solving.
 
-### 2. Extractive özet Lead-N > graph yöntemleri (KANITLANDI 3-0, arxiv 2512.08764)
-Naive "ilk cümle" (Lead-1) çoğu küçük abstractive LLM'i VE tüm graph yöntemlerini
-(TextRank/LexRank) ROUGE/BERTScore'da geçiyor. **TextRank/LexRank yazma — zaman kaybı.**
-→ Karar: Özet görevlerinde pasajı API'ye göndermeden önce **lokal extractive
-cümle-seçimi** yap (input token'ı ~10x kısar), sonra format-uyumu için kısa modele ver.
-Pür extractive DEĞİL (bizim özetlerde "20 kelime", "tek cümle", "iki görüş" gibi katı
-format var, Lead-N bunu tutmaz). Ama **büyük risk (bkz. #3)**.
+### 2. Extractive Lead-N summaries beat graph methods (CONFIRMED 3-0, arxiv 2512.08764)
+Naive "first sentence" (Lead-1) beats most small abstractive LLMs AND all graph
+methods (TextRank/LexRank) on ROUGE/BERTScore. **Don't write TextRank/LexRank —
+wasted effort.**
+→ Decision: for summarization, do **local extractive sentence selection** before
+sending the passage to the API (cuts input tokens ~10x), then let a small model
+fix the format. NOT pure-extractive (our summaries carry strict format
+constraints — "20 words", "one sentence", "two viewpoints" — which Lead-N can't
+honor). But see the **major risk in #3**.
 
-### 3. ⚠️ EN BÜYÜK RİSK: extractive/kural-tabanlı çıktıyı LLM-judge kabul eder mi? (KANIT YOK)
-Tüm klasik-NLP kanıtı ROUGE/BERTScore/F1 ile ölçülmüş, HİÇBİRİ LLM-judge ile değil.
-→ Karar: Hiçbir kategoriyi körlemesine sıfır-token'a bağlama. Key gelince gerçek
-judge prompt'una karşı A/B şart. Extractive özet ve lexicon sentiment bu kapıdan geçmeden
-production'a girmez.
+### 3. ⚠️ BIGGEST RISK: will an LLM judge accept extractive/rule-based output? (NO EVIDENCE)
+All classical-NLP evidence is measured with ROUGE/BERTScore/F1 — NONE with an
+LLM judge.
+→ Decision: never hard-wire a category to zero tokens blindly. Once the key
+arrives, A/B against the real judge prompt is mandatory. Extractive summaries
+and lexicon sentiment do not enter production before passing that gate.
 
-### 4. Prompt sıkıştırma: extractive chunk-seçimi > LLMLingua token-pruning (KANITLANDI 3-0)
-Berkeley çalışması: extractive seçim 10x'e kadar minimum kayıp; LongLLMLingua sık sık
-EN KÖTÜ. LLMLingua-2'nin "kayıpsız" iddiası ÇÜRÜTÜLDÜ (0-3).
-→ Karar: Uzun pasajlı görevlerde (özet, belki uzun factual) lokal extractive seçim.
-LLMLingua kullanma. Sadece pasajı sıkıştır, ASLA talimatı/soruyu.
+### 4. Prompt compression: extractive chunk selection > LLMLingua token pruning (CONFIRMED 3-0)
+Berkeley study: extractive selection loses almost nothing up to 10x;
+LongLLMLingua is frequently the WORST. LLMLingua-2's "lossless" claim was
+REFUTED (0-3).
+→ Decision: local extractive selection for long-passage tasks (summaries, maybe
+long factual). Don't use LLMLingua. Compress only the passage, NEVER the
+instruction or the question.
 
-### 5. Sıkıştırma reasoning görevlerinde çöküyor (KANITLANDI 3-0)
-GSM8K 20x'te sadece −1.5pt AMA BBH 7x'te −13.2pt. Yüksek oran mantık bulmacalarını öldürür.
-→ Karar: Logic/math pasajlarını agresif sıkıştırma; oranı muhafazakâr tut.
+### 5. Compression collapses on reasoning tasks (CONFIRMED 3-0)
+GSM8K at 20x loses only −1.5pt BUT BBH at 7x loses −13.2pt. High ratios kill
+logic puzzles.
+→ Decision: don't compress logic/math passages aggressively; keep ratios
+conservative.
 
-### 6. Sentiment'te gerekçe İSTEMEK doğruluğu DÜŞÜRÜYOR (fetch, arxiv 2406.11980)
-Açıklama eklenince ChatGPT'nin "neutral" etiketi %19→%54'e sıçramış — hem token yakıyor
-hem accuracy bozuyor.
-→ Karar: **Sentiment'te sadece etiket** (justification kaldır) — hem token kazancı hem
-olası accuracy kazancı. Şu anki promptumuz "one-sentence justification" istiyor = düzelt.
-(Judge gerekçe istiyorsa geri alınır — A/B ile.)
+### 6. ASKING for justification in sentiment REDUCES accuracy (fetch, arxiv 2406.11980)
+Adding explanations pushed ChatGPT's "neutral" label rate from 19% to 54% —
+burning tokens AND hurting accuracy.
+→ Decision: **label-only sentiment** (drop the justification) — a token win and
+a likely accuracy win. Our current prompt asks for a "one-sentence
+justification" = fix it. (Revert if the judge wants a rationale — via A/B.)
 
-### 7. Terse cevap factual/math'te güvenli (KANITLANDI 3-0, arxiv 2410.02736)
-Factual gate'lerde kalite farkı büyük, stille oynanmıyor; verbosity bias tek-cevap
-pass/fail gate'te büyük ölçüde nötr. → Karar: answer-only/no-preamble promptlar doğru,
-devam. Verbosity bias'ı sömürmek için PADDING YAPMA (net-negatif).
+### 7. Terse answers are safe for factual/math (CONFIRMED 3-0, arxiv 2410.02736)
+On factual gates the quality gap dominates; style barely moves it; verbosity
+bias is mostly neutral on single-answer pass/fail gates. → Decision:
+answer-only/no-preamble prompts are correct, keep them. Do NOT pad to exploit
+verbosity bias (net negative).
 
-### 8. Thinking kapatma en yüksek-güven completion tasarrufu — AMA ölç (KISMEN)
-Constrained decoding'in "bedava" olduğu iddiası ÇÜRÜTÜLDÜ (0-3). Bazı instruct modeller
-thinking kapalıyken bile binlerce token üretebiliyor. → Karar: Fireworks'te Gemma/MoE
-thinking-off parametresini canlıda DOĞRULA + completion uzunluğunu ölç. Varsayma.
+### 8. Disabling thinking is the highest-confidence completion saver — BUT measure it (PARTIAL)
+The claim that constrained decoding is "free" was REFUTED (0-3). Some instruct
+models emit thousands of tokens even with thinking off. → Decision: VERIFY the
+Gemma/MoE thinking-off knob against live Fireworks and measure completion
+lengths. Don't assume.
 
-### 9. Chain of Draft: mantık gerektiğinde ultra-kısa reasoning (fetch, güçlü)
-CoD, CoT completion'ını %68-92 kısıp doğruluğu koruyor (GSM8K ~200→~40 token).
-→ Karar: Logic/math'in gerçekten reasoning gerektirdiği yerlerde "tam CoT" yerine
-"draft" tarzı ("her adım ≤5 kelime") promptu. Completion token kazancı.
+### 9. Chain of Draft: ultra-short reasoning where logic is genuinely needed (fetch, strong)
+CoD cuts CoT completions by 68–92% while holding accuracy (GSM8K ~200→~40
+tokens).
+→ Decision: where logic/math truly needs reasoning, use a "draft"-style prompt
+("each step ≤5 words") instead of full CoT. Completion-token win.
 
-### 10. Token-metrikli routing: aynı tokenizer = aynı maliyet (DÜŞÜK güven, yapısal çıkarım)
-Üç Gemma aynı tokenizer'ı paylaşır → 31b, a4b'den daha PAHALI DEĞİL (string başına aynı
-token), sadece daha isabetli = daha az retry. → Karar: Varsayılanı **gemma-4-31b-it** yap
-(retry'ı azaltır, token-nötr). Tek kontrol: a4b daha mı az geveze (MoE)? Canlıda completion
-uzunluğu karşılaştır. Self-consistency yerine bedava lokal doğrulama — zaten öyle.
+### 10. Token-metric routing: same tokenizer = same cost (LOW confidence, structural inference)
+The three Gemmas share one tokenizer → 31b is NOT more expensive than a4b (same
+tokens per string), just more accurate = fewer retries. → Decision: make
+**gemma-4-31b-it** the default escalation (fewer retries, token-neutral). One
+check: is a4b less chatty (MoE)? Compare completion lengths live.
+Self-consistency is replaced by free local verification — already our design.
 
-## Çürütülen (yapma) iddialar
-- LLMLingua-2 "kayıpsız sıkıştırma" — 0-3 çürütüldü
-- Constrained/structured decoding "accuracy-free" — 0-3 çürütüldü (gate'e karşı doğrula)
-- "Agresif sıkıştırma toplam token'ı şişirir" paradoksu — 0-3 (mild oranlarda geçerli değil)
+## Refuted claims (do NOT do)
+- LLMLingua-2 "lossless compression" — refuted 0-3
+- Constrained/structured decoding is "accuracy-free" — refuted 0-3 (validate against the gate)
+- The "aggressive compression inflates total tokens" paradox — 0-3 (doesn't hold at mild ratios)
 
-## Eyleme dönük öncelik (key durumuna göre)
+## Actionable priorities (by key availability)
 
-**Şimdi yapılabilir (API'siz geliştir, flag arkasında A/B'ye hazır):**
-- Sentiment label-only modu (env flag)
-- Özet için lokal extractive cümle-ön-seçimi (pasajı kısalt, sonra modele ver)
-- Chain-of-Draft promptları (logic/math)
-- EvalExpr genişletme (PAL kapsamı)
+**Doable now (build without the API, behind flags, A/B-ready):**
+- Sentiment label-only mode (env flag)
+- Local extractive sentence pre-selection for summaries (shorten the passage, then hand to the model)
+- Chain-of-Draft prompts (logic/math)
+- EvalExpr expansion (PAL coverage)
 
-**Key gelince ZORUNLU A/B (gerçek judge'a karşı):**
-- Extractive özet / lexicon sentiment judge'dan geçiyor mu (#3 — en kritik)
-- thinking-off gerçekten completion kısıyor mu (#8)
-- 31b vs a4b completion uzunluğu (#10)
-- Her terse-output değişikliğinin gate-pass etkisi
+**MANDATORY A/B once the key arrives (against the real judge):**
+- Do extractive summaries / lexicon sentiment pass the judge (#3 — most critical)
+- Does thinking-off actually shorten completions (#8)
+- 31b vs a4b completion lengths (#10)
+- Gate-pass impact of every terse-output change
