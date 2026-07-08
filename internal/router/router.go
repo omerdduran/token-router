@@ -218,17 +218,20 @@ func solveBareExpression(prompt string) (string, bool) {
 
 // --- Layer 1a: local model (zero scored tokens) ---
 
-// Local answers are free for the score but cost wall-clock on the 2 vCPU
-// grading box, so completions are capped tighter than the remote tables.
+// Local completion tokens are UNSCORED — the only cost is wall-clock, already
+// bounded by the per-request timeout. So reasoning categories get generous
+// room to complete a full chain of thought (a truncated ramble that never
+// reaches its 'Answer:' line just escalates); non-reasoning categories stay
+// modest since extra length there buys no accuracy, only latency.
 var localMaxTokens = map[classify.Category]int{
-	classify.Factual:   90,
-	classify.Math:      120,
-	classify.Sentiment: 30,
-	classify.Summarize: 90,
-	classify.NER:       100,
-	classify.CodeDebug: 350,
-	classify.Logic:     220,
-	classify.CodeGen:   350,
+	classify.Factual:   160, // multi-part questions need room
+	classify.Math:      320, // full CoT for the direct-solve fallback (PAL caps separately)
+	classify.Sentiment: 40,
+	classify.Summarize: 110,
+	classify.NER:       192, // entity lists can be long
+	classify.CodeDebug: 512,
+	classify.Logic:     512, // full chain-of-thought before the 'Answer:' line
+	classify.CodeGen:   512,
 }
 
 func (r *Router) localChat(ctx context.Context, cat classify.Category, sys, prompt string, maxTok int, stop []string) (*llm.ChatResponse, error) {
@@ -266,7 +269,7 @@ func (r *Router) localCode(ctx context.Context, cat classify.Category, prompt st
 	if len(asserts) == 0 || !looksLikePython(prompt, "def ") {
 		return "", false
 	}
-	resp, err := r.localChat(ctx, cat, remoteSystem[cat], prompt, localMaxTokens[cat], nil)
+	resp, err := r.localChat(ctx, cat, localSystemFor(cat), prompt, localMaxTokens[cat], nil)
 	if err != nil {
 		return "", false
 	}
@@ -292,11 +295,17 @@ func (r *Router) localPlain(ctx context.Context, cat classify.Category, generic 
 	if cat == classify.Sentiment && reSentimentNuance.MatchString(prompt) {
 		return "", false // measured local failure mode → strong model
 	}
-	sys, maxTok := remoteSystem[cat], localMaxTokens[cat]
+	sys, maxTok := localSystemFor(cat), localMaxTokens[cat]
 	if generic {
-		sys, maxTok = genericSystem, 120
+		sys, maxTok = genericSystem, 160
 	}
-	resp, err := r.localChat(ctx, cat, sys, prompt, maxTok, r.stopFor(cat))
+	// Logic/math get no stop sequence locally: full CoT contains blank lines,
+	// and postprocess extracts the final 'Answer:' line afterwards.
+	stop := r.stopFor(cat)
+	if cat == classify.Logic || cat == classify.Math {
+		stop = nil
+	}
+	resp, err := r.localChat(ctx, cat, sys, prompt, maxTok, stop)
 	if err != nil {
 		return "", false
 	}
@@ -304,11 +313,11 @@ func (r *Router) localPlain(ctx context.Context, cat classify.Category, generic 
 	if ans == "" {
 		return "", false
 	}
-	// Logic is the highest-risk local category: a small model that never
-	// reaches its 'Answer:' line ships a truncated reasoning dump that the
-	// judge will fail. Only a short extracted conclusion may go out; a
-	// ramble escalates to the strong remote model instead.
-	if cat == classify.Logic && (len(ans) > 100 || strings.Contains(ans, "\n")) {
+	// Logic is the highest-risk local category: after full CoT, postprocess
+	// keeps only the extracted 'Answer:' line. If a newline survives, the model
+	// never emitted that line (a truncated reasoning dump) — escalate rather
+	// than ship it. The char cap guards against a verbose extracted conclusion.
+	if cat == classify.Logic && (len(ans) > 160 || strings.Contains(ans, "\n")) {
 		return "", false
 	}
 	if !generic && !verify.Check(cat, prompt, ans) {

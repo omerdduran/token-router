@@ -17,6 +17,25 @@ var remoteSystem = map[classify.Category]string{
 	classify.CodeGen:   "Output only the code.",
 }
 
+// localSystem overrides the remote prompts for the bundled local model.
+// Research (Chain-of-Draft, arXiv 2502.18600): terse/draft-style prompting
+// costs a sub-3B model 16-27 accuracy points on reasoning tasks (the opposite
+// of its effect on large models), so the local model gets FULL chain-of-thought
+// room exactly where the remote prompt is deliberately terse. Local completion
+// tokens are unscored, so length here costs only wall-clock (bounded by the
+// per-request timeout). Categories not listed fall back to remoteSystem.
+var localSystem = map[classify.Category]string{
+	classify.Logic: "Solve the puzzle. Reason step by step, showing all your work. Then, on a new final line, write exactly 'Answer: <solution>'.",
+	classify.Math:  "Solve the problem. Work through it step by step, showing your calculations. Then, on a new final line, write exactly 'Answer: <number>'.",
+}
+
+func localSystemFor(cat classify.Category) string {
+	if s, ok := localSystem[cat]; ok {
+		return s
+	}
+	return remoteSystem[cat]
+}
+
 // genericSystem serves weak-signal tasks: the big remote models handle any
 // category well from the task text itself.
 const genericSystem = "Answer the task directly and concisely."
