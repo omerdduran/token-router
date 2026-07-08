@@ -26,6 +26,34 @@ func normalizePrompt(s string) string {
 	return reWS.ReplaceAllString(strings.ToLower(strings.TrimSpace(s)), " ")
 }
 
+// crashFallback is the answer written when a single task panics — a
+// malformed or adversarial prompt must never take down the whole run
+// (a panic mid-run would leave only the empty skeleton = a zero score).
+const crashFallback = "Unable to determine the answer."
+
+// safeAnswer isolates one task: any panic inside routing/solving is
+// recovered and turned into a fallback answer so the worker keeps going.
+func safeAnswer(r *router.Router, ctx context.Context, t task.Task) (ans string) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			log.Printf("task %s: recovered panic: %v", t.ID, rec)
+			ans = crashFallback
+		}
+	}()
+	return r.Answer(ctx, t)
+}
+
+// safeTrySolveFree recovers panics from the free-solver pre-pass so a bad
+// prompt in the batch path degrades to "not solved" rather than crashing.
+func safeTrySolveFree(r *router.Router, cat classify.Category, prompt string) (ans string, ok bool) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			ans, ok = "", false
+		}
+	}()
+	return r.TrySolveFree(cat, prompt)
+}
+
 // startLocal brings up the local model layer: spawn llama-server for the
 // bundled GGUF, or (dev mode, no model path) probe for an already-running
 // server. Local inference counts toward accuracy and zero toward the token
@@ -176,7 +204,7 @@ func main() {
 				continue
 			}
 			// Invariant: a misclassified puzzle must still hit the free solver.
-			if ans, ok := r.TrySolveFree(cat, t.Prompt); ok {
+			if ans, ok := safeTrySolveFree(r, cat, t.Prompt); ok {
 				results[i].Answer = ans
 				r.Pace.TaskDone()
 				continue
@@ -222,7 +250,7 @@ func main() {
 		go func() {
 			defer wg.Done()
 			for idx := range jobs {
-				answer := r.Answer(ctx, tasks[idx])
+				answer := safeAnswer(r, ctx, tasks[idx])
 				resultsMu.Lock()
 				results[idx].Answer = answer
 				resultsMu.Unlock()

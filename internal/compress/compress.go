@@ -88,6 +88,23 @@ func trimPassage(s string) string {
 	if len(sents) < 3 {
 		return s
 	}
+	// centrality is O(sentences²); on a pathologically long passage that would
+	// burn wall-clock. Above a sane bound, take a cheap lead-N slice instead of
+	// scoring — a huge passage is exactly where extractive trimming matters
+	// most, but not at quadratic cost.
+	const maxScored = 300
+	if len(sents) > maxScored {
+		var b strings.Builder
+		for i := 0; i < maxScored && b.Len() < passageBudget; i++ {
+			b.WriteString(strings.TrimSpace(sents[i]))
+			b.WriteByte(' ')
+		}
+		lead := strings.TrimSpace(b.String())
+		if instr != "" {
+			return instr + ": " + lead
+		}
+		return lead
+	}
 	scores := centrality(sents)
 	// Rank middle sentences (lead stays) by score, drop lowest until we fit.
 	type ranked struct {
