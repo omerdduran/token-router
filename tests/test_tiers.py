@@ -20,12 +20,12 @@ HARNESS = [
 class TestTierSelection(unittest.TestCase):
     def test_harness_list(self):
         t = _select_tiers(HARNESS)
-        # strong must NOT be the reasoning model minimax-m3 (which burns
-        # scored completion tokens); it should be the dense 31b gemma.
-        self.assertEqual(t["strong"], "accounts/fireworks/models/gemma-4-31b-it")
+        # Measured on the leaderboard: minimax-m3 is the accurate strong tier
+        # (16/19); gemma-4-31b-it collapsed to 6/19. cheap/code stay on the
+        # small gemma and the code model.
+        self.assertEqual(t["strong"], "accounts/fireworks/models/minimax-m3")
         self.assertEqual(t["cheap"], "accounts/fireworks/models/gemma-4-26b-a4b-it")
         self.assertEqual(t["code"], "accounts/fireworks/models/kimi-k2p7-code")
-        self.assertNotIn("minimax", " ".join(t.values()))
 
     def test_prefers_unquantized_on_size_tie(self):
         t = _select_tiers([
@@ -34,8 +34,7 @@ class TestTierSelection(unittest.TestCase):
         ])
         self.assertEqual(t["strong"], "accounts/fireworks/models/gemma-4-31b-it")
 
-    def test_reasoning_only_list_falls_back(self):
-        # If nothing but reasoning models is allowed, we must still pick one.
+    def test_single_model_list(self):
         t = _select_tiers(["accounts/fireworks/models/minimax-m3"])
         self.assertEqual(t["strong"], "accounts/fireworks/models/minimax-m3")
 

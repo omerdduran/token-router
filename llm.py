@@ -60,10 +60,6 @@ _ACTIVE = re.compile(r"\ba(\d+)b\b")            # ...-a4b -> 4 active
 _DENSE = re.compile(r"(\d+)\s*b\b")             # ...-8b -> 8
 _CODE = re.compile(r"code|coder")
 _QUANT = re.compile(r"nvfp4|fp4|fp8|int8|int4|awq|gptq|gguf")
-# Reasoning models spend scored completion tokens on hidden/verbose thinking,
-# so they are never chosen as a primary tier — only as a last resort if the
-# allowed list contains nothing else. (On the real harness this is minimax-m3.)
-_REASONING = re.compile(r"minimax|gpt-oss|deepseek|glm|qwq|-r1\b|reasoning|thinking")
 
 
 def _total(mid: str) -> int:
@@ -82,15 +78,17 @@ def _active(mid: str) -> int:
 
 def _select_tiers(models: list[str]) -> dict[str, str]:
     """Map cheap/strong/code onto concrete IDs. Pure (no env) so tier choice
-    is unit-testable against the real harness list without network access."""
-    def non_reasoning(cands: list[str]) -> list[str]:
-        kept = [m for m in cands if not _REASONING.search(m.lower())]
-        return kept or cands  # never leave a tier empty
+    is unit-testable against the real harness list without network access.
 
+    Measured, not assumed: routing the strong tier to the biggest general
+    model (minimax-m3 on the real list) scored 16/19; diverting it to
+    gemma-4-31b-it collapsed to 6/19 — gemma's thinking returns empty content
+    under reasoning_effort=none. So minimax-m3 IS the strong tier here; its
+    token cost is controlled by the terse prompts, not by avoiding it."""
     coders = [m for m in models if _CODE.search(m.lower())]
-    general = non_reasoning([m for m in models if not _CODE.search(m.lower())] or models)
+    general = [m for m in models if not _CODE.search(m.lower())] or models
     strong = max(general, key=lambda m: (_total(m), not _QUANT.search(m.lower())))
-    cheap = min(non_reasoning(models), key=lambda m: (_active(m), not _QUANT.search(m.lower())))
+    cheap = min(models, key=lambda m: (_active(m), not _QUANT.search(m.lower())))
     code = max(coders, key=_total) if coders else strong
     return {"cheap": cheap, "strong": strong, "code": code}
 
