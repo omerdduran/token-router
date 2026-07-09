@@ -135,7 +135,7 @@ func main() {
 	results := make([]task.Result, len(tasks))
 	var resultsMu sync.Mutex
 	for i, t := range tasks {
-		results[i] = task.Result{ID: t.ID, Answer: ""}
+		results[i] = task.Result{ID: t.ID, RawID: t.RawID, Answer: ""}
 	}
 	if err := task.WriteAtomic(cfg.OutputPath, results); err != nil {
 		log.Printf("fatal: initial write: %v", err)

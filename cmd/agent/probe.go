@@ -67,7 +67,7 @@ func probeAnswers(cfg *config.Config) {
 	}
 	results := make([]task.Result, len(tasks))
 	for i, t := range tasks {
-		results[i] = task.Result{ID: t.ID, Answer: crashFallback}
+		results[i] = task.Result{ID: t.ID, RawID: t.RawID, Answer: crashFallback}
 	}
 	if err := task.WriteAtomic(cfg.OutputPath, results); err != nil {
 		log.Printf("probe: write results: %v", err)
