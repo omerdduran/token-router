@@ -13,7 +13,12 @@ Each task is answered in two steps, the first of which spends nothing:
    summarization, NER, code-debug, code-gen, logic). No model call, so routing
    is free against the scored token budget.
 
-2. **One tuned Fireworks call** (`agent.py` + `llm.py`) — each category carries
+2. **Deterministic solvers** (`solvers.py`) — for logic assignment puzzles and
+   pure arithmetic, plain code answers with certainty at zero tokens. Every
+   solver self-gates and defers to the model on the slightest ambiguity, so it
+   can never turn a gettable task into a wrong answer.
+
+3. **One tuned Fireworks call** (`agent.py` + `llm.py`) — each category carries
    a terse system prompt, a token cap, and a model tier. Tiers (`cheap`,
    `strong`, `code`) are inferred at runtime from whatever IDs arrive in
    `ALLOWED_MODELS`, never hardcoded. `reasoning_effort=none` suppresses hidden
@@ -49,6 +54,7 @@ python -m unittest discover -s tests -p "test_*.py"
 |------|---------|
 | `main.py` | Entrypoint: I/O contract, thread pool, deadline |
 | `classifier.py` | Zero-token category detection |
+| `solvers.py` | Zero-token deterministic solvers (logic puzzles, arithmetic) |
 | `agent.py` | Per-category prompt / token-cap / tier strategy |
 | `llm.py` | Fireworks client, tier inference, token accounting |
 | `Dockerfile` | `python:3.12-slim` + `openai` |

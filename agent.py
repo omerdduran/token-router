@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from classifier import Category, classify
 from llm import complete, model_for
+from solvers import solve_arithmetic, solve_logic
 
 CHEAP, STRONG, CODE = "cheap", "strong", "code"
 
@@ -58,8 +59,28 @@ _CONFIG: dict[Category, tuple[str, int, str]] = {
 }
 
 
+# Zero-token deterministic solvers, tried per category before any model call.
+# Each self-gates and returns None on the slightest doubt, so a miss simply
+# falls through to the model — it can never turn a gettable task into a wrong
+# answer. Order-independent: at most one fires per task.
+_SOLVERS = {
+    Category.LOGIC: solve_logic,
+    Category.MATH: solve_arithmetic,
+}
+
+
 def solve(prompt: str) -> str:
-    system, max_tokens, tier = _CONFIG[classify(prompt)]
+    category = classify(prompt)
+    solver = _SOLVERS.get(category)
+    if solver is not None:
+        try:
+            answer = solver(prompt)
+        except Exception:  # a solver bug must never break the task
+            answer = None
+        if answer:
+            return answer
+
+    system, max_tokens, tier = _CONFIG[category]
     primary = model_for(tier)
     # Blank/failed answers retry on the opposite general tier.
     fallback = model_for(STRONG if tier == CHEAP else CHEAP)

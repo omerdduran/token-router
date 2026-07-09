@@ -27,7 +27,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install --no-cache-dir -r requirements.txt
-      - run: python -m py_compile main.py agent.py classifier.py llm.py
+      - run: python -m py_compile main.py agent.py classifier.py llm.py solvers.py
       - run: python -m unittest discover -s tests -p "test_*.py" -v
 
   image:
