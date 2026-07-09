@@ -87,8 +87,28 @@ def tiers() -> dict[str, str]:
     return {"cheap": cheap, "strong": strong, "code": code}
 
 
+# PREFERRED_MODEL pins every tier to one allowed model chosen for token
+# efficiency. Token counts are per-model (each has its own tokenizer), so the
+# same text bills differently; measurement picked the leanest allowed model.
+# Guarded: if no allowed model matches, tier inference is used unchanged, so
+# this can never select an out-of-list model or break on an unexpected list.
+_PREFERRED = os.environ.get("PREFERRED_MODEL", "").strip().lower()
+
+
+def _preferred_model() -> str | None:
+    if not _PREFERRED:
+        return None
+    for m in _allowed():
+        if _PREFERRED in m.lower():
+            return m
+    return None
+
+
 def model_for(tier: str) -> str:
-    return os.environ.get("MODEL") or os.environ.get(f"MODEL_{tier.upper()}") or tiers()[tier]
+    explicit = os.environ.get("MODEL") or os.environ.get(f"MODEL_{tier.upper()}")
+    if explicit:
+        return explicit
+    return _preferred_model() or tiers()[tier]
 
 
 def describe_tiers() -> str:
