@@ -4,6 +4,15 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      image:
+        description: "Image name under ghcr.io/<owner>/ ('' = repo name)"
+        default: ""
+        required: false
+      tag:
+        description: "Extra tag to publish alongside :latest"
+        default: ""
+        required: false
 
 permissions:
   contents: read
@@ -14,10 +23,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-python@v5
         with:
-          go-version: "1.26"
-      - run: go vet ./... && go test ./...
+          python-version: "3.12"
+      - run: pip install --no-cache-dir -r requirements.txt
+      - run: python -m py_compile main.py agent.py classifier.py llm.py
+      - run: python -m unittest discover -s tests -p "test_*.py" -v
 
   image:
     needs: test
@@ -30,13 +41,22 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/${{ inputs.image != '' && format('{0}/{1}', github.repository_owner, inputs.image) || github.repository }}
+          tags: |
+            type=raw,value=latest
+            type=sha
+            type=raw,value=${{ inputs.tag }},enable=${{ inputs.tag != '' }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
       - uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64
           push: true
-          tags: |
-            ghcr.io/${{ github.repository }}:latest
-            ghcr.io/${{ github.repository }}:${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

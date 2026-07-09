@@ -8,3 +8,8 @@ dist/
 # eval run outputs
 eval/out/
 eval/out-*/
+
+# local test output
+out/
+__pycache__/
+*.pyc
