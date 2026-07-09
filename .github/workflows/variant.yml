@@ -12,6 +12,10 @@ on:
       tag:
         description: "Image tag for this variant"
         required: true
+      image:
+        description: "Image name under ghcr.io/<owner>/ ('' = repo name)"
+        default: ""
+        required: false
       local:
         description: "DEFAULT_LOCAL (true/false)"
         default: "true"
@@ -69,7 +73,11 @@ jobs:
           context: .
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/${{ github.repository }}:${{ inputs.tag }}
+          tags: ghcr.io/${{ inputs.image != '' && format('{0}/{1}', github.repository_owner, inputs.image) || github.repository }}:${{ inputs.tag }}
+          # Auto-links the package to this repo so it inherits access instead
+          # of being created orphaned-private.
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
           build-args: |
             INCLUDE_MODEL=${{ inputs.include_model }}
             DEFAULT_LOCAL=${{ inputs.local }}
