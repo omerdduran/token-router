@@ -1,8 +1,9 @@
 name: build-and-push
 
+# Dispatch-only: a plain push no longer triggers a build. Each submission
+# image is built explicitly with its tag via `gh workflow run build-and-push
+# -f image=... -f tag=...`, so there is never a second, colliding run.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       image:
