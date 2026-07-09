@@ -60,6 +60,10 @@ _ACTIVE = re.compile(r"\ba(\d+)b\b")            # ...-a4b -> 4 active
 _DENSE = re.compile(r"(\d+)\s*b\b")             # ...-8b -> 8
 _CODE = re.compile(r"code|coder")
 _QUANT = re.compile(r"nvfp4|fp4|fp8|int8|int4|awq|gptq|gguf")
+# Reasoning models spend scored completion tokens on hidden/verbose thinking,
+# so they are never chosen as a primary tier — only as a last resort if the
+# allowed list contains nothing else. (On the real harness this is minimax-m3.)
+_REASONING = re.compile(r"minimax|gpt-oss|deepseek|glm|qwq|-r1\b|reasoning|thinking")
 
 
 def _total(mid: str) -> int:
@@ -76,15 +80,24 @@ def _active(mid: str) -> int:
     return int(m.group(1)) if m else _total(mid)
 
 
+def _select_tiers(models: list[str]) -> dict[str, str]:
+    """Map cheap/strong/code onto concrete IDs. Pure (no env) so tier choice
+    is unit-testable against the real harness list without network access."""
+    def non_reasoning(cands: list[str]) -> list[str]:
+        kept = [m for m in cands if not _REASONING.search(m.lower())]
+        return kept or cands  # never leave a tier empty
+
+    coders = [m for m in models if _CODE.search(m.lower())]
+    general = non_reasoning([m for m in models if not _CODE.search(m.lower())] or models)
+    strong = max(general, key=lambda m: (_total(m), not _QUANT.search(m.lower())))
+    cheap = min(non_reasoning(models), key=lambda m: (_active(m), not _QUANT.search(m.lower())))
+    code = max(coders, key=_total) if coders else strong
+    return {"cheap": cheap, "strong": strong, "code": code}
+
+
 @lru_cache(maxsize=1)
 def tiers() -> dict[str, str]:
-    models = list(_allowed())
-    general = [m for m in models if not _CODE.search(m.lower())] or models
-    strong = max(general, key=lambda m: (_total(m), not _QUANT.search(m.lower())))
-    coders = [m for m in models if _CODE.search(m.lower())]
-    code = max(coders, key=_total) if coders else strong
-    cheap = min(models, key=lambda m: (_active(m), not _QUANT.search(m.lower())))
-    return {"cheap": cheap, "strong": strong, "code": code}
+    return _select_tiers(list(_allowed()))
 
 
 # PREFERRED_MODEL pins every tier to one allowed model chosen for token
