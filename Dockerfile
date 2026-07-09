@@ -3,6 +3,11 @@
 # The official llama.cpp images ship the full toolchain (~6GB); we build a
 # lean static llama-server instead — final image ≈ model + ~200MB.
 
+# INCLUDE_MODEL=false builds a weightless diagnostic image (~150MB vs ~3.2GB):
+# a zero-byte placeholder ships at the model path and the agent degrades to
+# Fireworks-only. Isolates registry-pull-size and llama-server variables.
+ARG INCLUDE_MODEL=true
+
 # --- Stage 1: Go binary ---
 FROM --platform=$BUILDPLATFORM golang:1.26 AS gobuild
 WORKDIR /src
@@ -30,12 +35,18 @@ RUN cmake -S /llama -B /build \
 # --- Stage 3: model weights ---
 # Grading box is 4 GB RAM / 2 vCPU: E2B Q4 (~3GB) fits alongside the KV cache
 # and the agent; the E4B file alone (4.8GB) would not. See eval/PERF.md.
-FROM alpine:3.20 AS model
+FROM alpine:3.20 AS model-true
 ARG MODEL_URL=https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-UD-Q4_K_XL.gguf
 # --http1.1: HF's CDN intermittently resets HTTP/2 streams on multi-GB pulls
 # (curl exit 92); retry-all-errors + resume make the pull deterministic.
 RUN apk add --no-cache curl && \
     curl -fL --http1.1 --retry 5 --retry-all-errors -C - -o /model.gguf "$MODEL_URL"
+
+# Weightless variant: zero-byte placeholder, startLocal treats it as absent.
+FROM alpine:3.20 AS model-false
+RUN touch /model.gguf
+
+FROM model-${INCLUDE_MODEL} AS model
 
 # --- Stage 4: runtime ---
 FROM debian:bookworm-slim
@@ -58,6 +69,7 @@ ARG DEFAULT_LOCAL=true
 ARG DEFAULT_LOCAL_CATEGORIES=""
 ARG DEFAULT_WORKERS=4
 ARG DEFAULT_REASONING_EFFORT=none
+ARG DEFAULT_SDK_MIMIC=true
 ARG DEFAULT_PREFIX_CACHE=true
 ARG DEFAULT_REMOTE_CAPS=true
 ARG DEFAULT_PROBE=false
@@ -65,6 +77,7 @@ ENV LOCAL=${DEFAULT_LOCAL} \
     LOCAL_CATEGORIES=${DEFAULT_LOCAL_CATEGORIES} \
     WORKERS=${DEFAULT_WORKERS} \
     REASONING_EFFORT=${DEFAULT_REASONING_EFFORT} \
+    SDK_MIMIC=${DEFAULT_SDK_MIMIC} \
     PREFIX_CACHE=${DEFAULT_PREFIX_CACHE} \
     REMOTE_CAPS=${DEFAULT_REMOTE_CAPS} \
     PROBE=${DEFAULT_PROBE}

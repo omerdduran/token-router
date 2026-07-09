@@ -32,6 +32,9 @@ func runProbe(cfg *config.Config) {
 	ask := func(name string, budget int, headers map[string]string, extra map[string]any) {
 		client := llm.NewClient(cfg.FireworksBaseURL, cfg.FireworksAPIKey, 30*time.Second)
 		client.Headers = headers
+		if name == "P4-sdk-mimic" {
+			client.ForceHTTP1() // full mimicry: SDK clients speak HTTP/1.1
+		}
 		fw := llm.NewFireworks(client, cfg.AllowedModels)
 		resp, err := fw.Chat(ctx, llm.RoleGeneral, llm.ChatRequest{
 			Messages: []llm.Message{{Role: "user", Content: "Repeat the word OK until you run out of space."}},
@@ -50,12 +53,7 @@ func runProbe(cfg *config.Config) {
 	ask("P1-plain", 1000, nil, nil)
 	ask("P2-affinity", 300, map[string]string{"x-session-affinity": "tokenrouter"}, nil)
 	ask("P3-effort", 100, nil, map[string]any{"reasoning_effort": "none"})
-	ask("P4-sdk-mimic", 30, map[string]string{
-		"User-Agent":                 "OpenAI/Python 1.54.4",
-		"X-Stainless-Lang":           "python",
-		"X-Stainless-Package-Version": "1.54.4",
-		"Accept":                     "application/json",
-	}, nil)
+	ask("P4-sdk-mimic", 30, llm.SDKHeaders(), nil)
 }
 
 // probeAnswers writes fallback answers for every task so the run still

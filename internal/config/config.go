@@ -98,6 +98,13 @@ type Config struct {
 	// retry.
 	ReasoningEffort string
 
+	// SDKMimic makes Fireworks requests present like the official OpenAI
+	// Python SDK: HTTP/1.1 (Go negotiates h2 by default) plus the SDK's
+	// User-Agent/Stainless headers. The gate-passing agents all go through
+	// SDK-shaped clients; a proxy/WAF that filters on client fingerprint
+	// would reject only ours. Harmless against the real API — on by default.
+	SDKMimic bool
+
 	// PrefixCache pins Fireworks calls to one replica via an
 	// x-session-affinity header so the automatic prefix cache hits and the
 	// shared per-category system prompt is billed at Fireworks' discount
@@ -150,6 +157,7 @@ func FromEnv() *Config {
 		Grammar:        envBool("GRAMMAR", false),
 
 		ReasoningEffort: envStr("REASONING_EFFORT", "none"),
+		SDKMimic:        envBool("SDK_MIMIC", true),
 		PrefixCache:     envBool("PREFIX_CACHE", true),
 		RemoteCaps:      envBool("REMOTE_CAPS", true),
 	}

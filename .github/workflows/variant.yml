@@ -28,6 +28,14 @@ on:
         description: "DEFAULT_REASONING_EFFORT ('' = never send the param)"
         default: "none"
         required: false
+      include_model:
+        description: "INCLUDE_MODEL (false = weightless ~150MB diagnostic image)"
+        default: "true"
+        required: false
+      sdk_mimic:
+        description: "DEFAULT_SDK_MIMIC (true = OpenAI-SDK headers + HTTP/1.1)"
+        default: "true"
+        required: false
       prefix_cache:
         description: "DEFAULT_PREFIX_CACHE (false = no x-session-affinity header)"
         default: "true"
@@ -63,10 +71,12 @@ jobs:
           push: true
           tags: ghcr.io/${{ github.repository }}:${{ inputs.tag }}
           build-args: |
+            INCLUDE_MODEL=${{ inputs.include_model }}
             DEFAULT_LOCAL=${{ inputs.local }}
             DEFAULT_LOCAL_CATEGORIES=${{ inputs.local_categories }}
             DEFAULT_WORKERS=${{ inputs.workers }}
             DEFAULT_REASONING_EFFORT=${{ inputs.reasoning_effort }}
+            DEFAULT_SDK_MIMIC=${{ inputs.sdk_mimic }}
             DEFAULT_PREFIX_CACHE=${{ inputs.prefix_cache }}
             DEFAULT_REMOTE_CAPS=${{ inputs.remote_caps }}
             DEFAULT_PROBE=${{ inputs.probe }}

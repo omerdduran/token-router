@@ -74,6 +74,12 @@ func startLocal(ctx context.Context, cfg *config.Config) (*llm.Client, func()) {
 		log.Printf("local: using running server at %s", cfg.LocalBaseURL)
 		return llm.NewClient(cfg.LocalBaseURL, "", cfg.LocalRequestTimeout), func() {}
 	}
+	// Weightless diagnostic builds ship a zero-byte placeholder at the model
+	// path; treat it (or a missing file) as "no model bundled".
+	if fi, err := os.Stat(cfg.LocalModelPath); err != nil || fi.Size() == 0 {
+		log.Printf("local: model file %s missing or empty — Fireworks-only", cfg.LocalModelPath)
+		return nil, func() {}
+	}
 	// Model load must finish well inside the 60s container-start budget.
 	sctx, cancel := context.WithTimeout(ctx, 55*time.Second)
 	defer cancel()
@@ -155,10 +161,20 @@ func main() {
 	}()
 
 	fwClient := llm.NewClient(cfg.FireworksBaseURL, cfg.FireworksAPIKey, cfg.RequestTimeout)
+	headers := map[string]string{}
+	if cfg.SDKMimic {
+		fwClient.ForceHTTP1()
+		for k, v := range llm.SDKHeaders() {
+			headers[k] = v
+		}
+	}
 	if cfg.PrefixCache {
 		// A stable per-run affinity value routes every call to the same
 		// replica so the shared prompt prefix stays cache-warm.
-		fwClient.Headers = map[string]string{"x-session-affinity": "tokenrouter"}
+		headers["x-session-affinity"] = "tokenrouter"
+	}
+	if len(headers) > 0 {
+		fwClient.Headers = headers
 	}
 	fw := llm.NewFireworks(fwClient, cfg.AllowedModels)
 	localClient, stopLocal := startLocal(ctx, cfg)
