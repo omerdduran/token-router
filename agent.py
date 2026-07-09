@@ -12,51 +12,47 @@ from llm import complete, model_for
 
 CHEAP, STRONG, CODE = "cheap", "strong", "code"
 
-# Kept deliberately terse: the system prompt is input on every call and input
-# tokens count toward the score. Trimming wording (not intent) lowers tokens
-# with no effect on what the model outputs — an accuracy-neutral saving.
-_BASE = "English only. Be concise; no preamble."
+_BASE = "Answer in English. Be concise and direct; no preamble, no restating the question."
 
-# (system prompt, max_tokens, tier) per category. Caps are ceilings, not
-# targets: a concise answer stops well before them, so they are left generous
-# to avoid ever truncating a correct answer into a judge failure.
+# (system prompt, max_tokens, tier) per category.
 _CONFIG: dict[Category, tuple[str, int, str]] = {
     Category.FACTUAL: (
-        f"{_BASE} Explain clearly in under 120 words.",
+        f"{_BASE} Give a correct, clear answer in under 120 words.",
         320, STRONG,
     ),
     Category.MATH: (
-        f"{_BASE} Brief steps, then 'Answer: <value>' on its own line.",
+        f"{_BASE} Work through it in brief steps, then end with "
+        f"'Answer: <value>' on its own line.",
         400, STRONG,
     ),
     Category.SENTIMENT: (
-        f"{_BASE} Label the sentiment positive, negative, or neutral, "
+        f"{_BASE} State the sentiment as positive, negative, or neutral, "
         f"then one short reason.",
         120, CHEAP,
     ),
     Category.SUMMARIZATION: (
-        f"{_BASE} Output only the summary; obey any stated length or "
-        f"format constraint.",
+        f"{_BASE} Output only the summary and obey any length or format "
+        f"constraint stated in the task.",
         240, CHEAP,
     ),
     Category.NER: (
-        f"{_BASE} List each entity as 'label: value', one per line; "
-        f"labels: person, organization, location, date.",
+        f"{_BASE} List each entity as 'label: value', one per line, using "
+        f"the labels person, organization, location, date.",
         260, CHEAP,
     ),
     Category.CODE_DEBUG: (
-        f"{_BASE} Name the bug in one sentence, then the corrected code "
-        f"in one fenced block.",
+        f"{_BASE} State the bug in one sentence, then give the corrected "
+        f"code in a single fenced block.",
         520, CODE,
     ),
     Category.CODE_GEN: (
-        f"{_BASE} Output only the code in one fenced block, correct and "
-        f"self-contained.",
+        f"{_BASE} Output only the code in a single fenced block — correct, "
+        f"complete, and self-contained.",
         520, CODE,
     ),
     Category.LOGIC: (
-        f"{_BASE} Deduce in brief numbered steps, checking each "
-        f"constraint, then 'Answer: <value>' on its own line.",
+        f"{_BASE} Reason in brief numbered steps, checking each constraint, "
+        f"then end with 'Answer: <value>' on its own line.",
         460, STRONG,
     ),
 }
