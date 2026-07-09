@@ -108,6 +108,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Diagnostic mode: decode which request profiles the judging proxy
+	// accepts via the leaderboard's token counter. See probe.go.
+	if os.Getenv("PROBE") == "true" {
+		probeAnswers(cfg)
+		runProbe(cfg)
+		log.Printf("probe run complete")
+		return
+	}
+
 	tasks, err := task.Read(cfg.InputPath)
 	if err != nil {
 		log.Printf("fatal: %v", err)

@@ -36,6 +36,10 @@ on:
         description: "DEFAULT_REMOTE_CAPS (false = omit max_tokens on remote)"
         default: "true"
         required: false
+      probe:
+        description: "DEFAULT_PROBE (true = diagnostic probe mode)"
+        default: "false"
+        required: false
 
 permissions:
   contents: read
@@ -65,5 +69,6 @@ jobs:
             DEFAULT_REASONING_EFFORT=${{ inputs.reasoning_effort }}
             DEFAULT_PREFIX_CACHE=${{ inputs.prefix_cache }}
             DEFAULT_REMOTE_CAPS=${{ inputs.remote_caps }}
+            DEFAULT_PROBE=${{ inputs.probe }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
