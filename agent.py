@@ -7,6 +7,9 @@ push the model to answer directly without preamble.
 
 from __future__ import annotations
 
+import os
+import re
+
 import local
 from classifier import Category, classify
 from llm import complete, model_for
@@ -74,7 +77,12 @@ _SOLVERS = {
 }
 
 
-def solve(prompt: str) -> str:
+def route(prompt: str):
+    """Resolve a task as far as possible without a paid call.
+
+    Returns ("done", answer) when a deterministic solver or the local model
+    already answered it, or ("remote", category, system, max_tokens, tier)
+    when it still needs Fireworks."""
     category = classify(prompt)
     solver = _SOLVERS.get(category)
     if solver is not None:
@@ -83,22 +91,75 @@ def solve(prompt: str) -> str:
         except Exception:  # a solver bug must never break the task
             answer = None
         if answer:
-            return answer
+            return ("done", answer)
 
     system, max_tokens, tier = _CONFIG[category]
-
-    # Bundled local model for its reliable categories: zero scored tokens.
-    # Any empty result or error falls through to Fireworks below.
     if local.available_for(category.value):
         try:
             answer = local.complete(system, prompt, max_tokens)
         except Exception:
             answer = ""
         if answer:
-            return answer
+            return ("done", answer)
 
+    return ("remote", category, system, max_tokens, tier)
+
+
+def solve_remote(prompt: str, system: str, max_tokens: int, tier: str) -> str:
     primary = model_for(tier)
-    # Blank/failed answers retry on the opposite general tier.
     fallback = model_for(STRONG if tier == CHEAP else CHEAP)
     return complete(prompt, system=system, max_tokens=max_tokens,
                     model=primary, fallback_model=fallback)
+
+
+def solve(prompt: str) -> str:
+    r = route(prompt)
+    if r[0] == "done":
+        return r[1]
+    _, category, system, max_tokens, tier = r
+    return solve_remote(prompt, system, max_tokens, tier)
+
+
+# --- Batching (opt-in via BATCH=true) ---------------------------------------
+# Same-category Fireworks tasks are answered in one call, so the system prompt
+# and per-message scaffolding are paid once instead of once per task. Only
+# short, single-answer categories are batched; a numbered-reply parse failure
+# falls the whole group back to individual calls (never a wrong answer).
+_BATCH = os.environ.get("BATCH", "").strip().lower() in ("1", "true", "yes")
+_BATCH_CATEGORIES = {c.strip() for c in
+                     os.environ.get("BATCH_CATEGORIES", "sentiment,factual").split(",")
+                     if c.strip()}
+_NUM_SPLIT = re.compile(r"(?m)^\s*(\d+)[.):]\s+")
+
+
+def batchable(category: Category) -> bool:
+    return _BATCH and category.value in _BATCH_CATEGORIES
+
+
+def answer_batch(system: str, max_tokens: int, tier: str, prompts: list[str]):
+    """One batched call for same-category prompts. Returns a list of answers
+    aligned to prompts, or None if the reply can't be parsed cleanly."""
+    n = len(prompts)
+    batch_system = (
+        f"{system} You are given {n} independent tasks, numbered 1 to {n}. "
+        f"Reply with exactly {n} lines: line k starts with 'k. ' followed only "
+        f"by task k's answer, in order. No preamble, no blank lines.")
+    numbered = "\n".join(f"{i + 1}. {p}" for i, p in enumerate(prompts))
+    primary = model_for(tier)
+    try:
+        resp = complete(numbered, system=batch_system,
+                        max_tokens=min(max_tokens * n, 1400),
+                        model=primary, fallback_model=None)
+    except Exception:
+        return None
+    parts = _NUM_SPLIT.split(resp.strip())
+    answers: dict[int, str] = {}
+    for i in range(1, len(parts) - 1, 2):
+        try:
+            k = int(parts[i])
+        except ValueError:
+            continue
+        answers[k] = parts[i + 1].strip()
+    if all(j in answers and answers[j] for j in range(1, n + 1)):
+        return [answers[j] for j in range(1, n + 1)]
+    return None

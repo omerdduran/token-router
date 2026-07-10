@@ -18,6 +18,7 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import local
+import agent
 from agent import solve
 from llm import describe_tiers, usage
 
@@ -57,6 +58,21 @@ def _answer_one(task: dict, index: int) -> dict:
     return {"task_id": task_id, "answer": answer}
 
 
+def _answer_remote(task: dict, index: int, spec) -> dict:
+    """Pool worker for a task already routed to Fireworks (spec = system,
+    max_tokens, tier), or with spec None for a full solve()."""
+    task_id = task.get("task_id", f"idx_{index}")
+    try:
+        if spec is None:
+            answer = solve(task.get("prompt", ""))
+        else:
+            answer = agent.solve_remote(task.get("prompt", ""), *spec)
+    except Exception:
+        traceback.print_exc()
+        answer = ""
+    return {"task_id": task_id, "answer": answer}
+
+
 # Live results, persisted incrementally so a kill (OOM or the harness's
 # timeout) still leaves a valid, scoreable results.json instead of nothing —
 # the difference between a partial score and an INFRA_ERROR. The local model
@@ -81,6 +97,35 @@ def _on_signal(signum, _frame):
     os._exit(0)
 
 
+def _store(index: int, task: dict, answer: str) -> None:
+    with _results_lock:
+        _results[index] = {"task_id": task.get("task_id", f"idx_{index}"), "answer": answer}
+
+
+def _run_pool(work: list[tuple]) -> None:
+    """Run (index, task, spec) work items via the pool, flushing after each
+    completion and stopping at the deadline. spec None → full solve()."""
+    if not work:
+        return
+    deadline = time.monotonic() + DEADLINE_S
+    pool = ThreadPoolExecutor(max_workers=min(MAX_WORKERS, len(work)))
+    fut_to_idx = {pool.submit(_answer_remote, task, i, spec): i for i, task, spec in work}
+    try:
+        for fut in as_completed(fut_to_idx, timeout=max(1.0, DEADLINE_S)):
+            idx = fut_to_idx[fut]
+            try:
+                with _results_lock:
+                    _results[idx] = fut.result()
+            except Exception:
+                pass
+            _flush()
+            if time.monotonic() > deadline:
+                break
+    except Exception:
+        pass
+    pool.shutdown(wait=False, cancel_futures=True)
+
+
 def run(tasks: list[dict]) -> list[dict]:
     global _results
     # Skeleton first: every task_id present with a blank answer, on disk before
@@ -91,25 +136,47 @@ def run(tasks: list[dict]) -> list[dict]:
     if not tasks:
         return _results
 
-    deadline = time.monotonic() + DEADLINE_S
-    pool = ThreadPoolExecutor(max_workers=min(MAX_WORKERS, len(tasks)))
-    fut_to_idx = {pool.submit(_answer_one, t, i): i for i, t in enumerate(tasks)}
+    if not agent._BATCH:
+        _run_pool([(i, t, None) for i, t in enumerate(tasks)])
+        _flush()
+        return _results
 
-    try:
-        for fut in as_completed(fut_to_idx, timeout=max(1.0, DEADLINE_S)):
-            idx = fut_to_idx[fut]
-            try:
-                res = fut.result()
-                with _results_lock:
-                    _results[idx] = res
-            except Exception:
-                pass
-            _flush()  # persist after every completion
-            if time.monotonic() > deadline:
-                break
-    except Exception:  # as_completed timeout or similar: keep the partial file
-        pass
-    pool.shutdown(wait=False, cancel_futures=True)
+    # Batch mode: route every task first. Solver/local answers land now;
+    # Fireworks tasks are bucketed by (system, max_tokens, tier) so a batch
+    # shares one system prompt.
+    buckets: dict[tuple, list[tuple[int, str]]] = {}
+    individual: list[tuple] = []
+    for i, t in enumerate(tasks):
+        prompt = t.get("prompt", "")
+        try:
+            r = agent.route(prompt)
+        except Exception:
+            individual.append((i, t, None))
+            continue
+        if r[0] == "done":
+            _store(i, t, r[1])
+            continue
+        _, category, system, max_tokens, tier = r
+        if agent.batchable(category):
+            buckets.setdefault((system, max_tokens, tier), []).append((i, prompt))
+        else:
+            individual.append((i, t, (system, max_tokens, tier)))
+    _flush()
+
+    for (system, max_tokens, tier), items in buckets.items():
+        if len(items) == 1:
+            i, _ = items[0]
+            individual.append((i, tasks[i], (system, max_tokens, tier)))
+            continue
+        answers = agent.answer_batch(system, max_tokens, tier, [p for _, p in items])
+        if answers is None:  # parse failure → fall the group back to per-task
+            individual.extend((i, tasks[i], (system, max_tokens, tier)) for i, _ in items)
+        else:
+            for (i, _), ans in zip(items, answers):
+                _store(i, tasks[i], ans)
+            _flush()
+
+    _run_pool(individual)
     _flush()
     return _results
 
