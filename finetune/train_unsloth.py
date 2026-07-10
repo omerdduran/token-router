@@ -61,27 +61,29 @@ def main() -> None:
 
     dataset = load_dataset(tokenizer)
 
-    trainer = SFTTrainer(
-        model=model,
-        tokenizer=tokenizer,
-        train_dataset=dataset,
-        args=SFTConfig(
-            dataset_text_field="text",
-            fp16=True,  # T4 is Turing: fp16 only (bf16 needs Ampere+)
-            per_device_train_batch_size=2,
-            gradient_accumulation_steps=4,
-            warmup_ratio=0.05,
-            num_train_epochs=3,
-            learning_rate=2e-4,
-            logging_steps=10,
-            optim="adamw_8bit",
-            weight_decay=0.01,
-            lr_scheduler_type="cosine",
-            seed=42,
-            output_dir="outputs",
-            report_to="none",
-        ),
+    cfg = SFTConfig(
+        dataset_text_field="text",
+        fp16=True,  # T4 is Turing: fp16 only (bf16 needs Ampere+)
+        per_device_train_batch_size=2,
+        gradient_accumulation_steps=4,
+        warmup_ratio=0.05,
+        num_train_epochs=3,
+        learning_rate=2e-4,
+        logging_steps=10,
+        optim="adamw_8bit",
+        weight_decay=0.01,
+        lr_scheduler_type="cosine",
+        seed=42,
+        output_dir="outputs",
+        report_to="none",
     )
+    # trl renamed tokenizer -> processing_class in newer versions; support both.
+    try:
+        trainer = SFTTrainer(model=model, processing_class=tokenizer,
+                             train_dataset=dataset, args=cfg)
+    except TypeError:
+        trainer = SFTTrainer(model=model, tokenizer=tokenizer,
+                             train_dataset=dataset, args=cfg)
     trainer.train()
 
     # Merge LoRA + export GGUF via llama.cpp (bundled with Unsloth).
