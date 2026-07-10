@@ -4,7 +4,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from solvers import solve_arithmetic, solve_logic
+from solvers import solve_arithmetic, solve_logic, solve_math
 
 
 class TestLogic(unittest.TestCase):
@@ -84,6 +84,33 @@ class TestArithmetic(unittest.TestCase):
 
     def test_defer_letters(self):
         self.assertIsNone(solve_arithmetic("What is x + 2?"))
+
+
+class TestMath(unittest.TestCase):
+    def test_percent_of(self):
+        self.assertEqual(solve_math("What is 15% of 240?"), "36")
+        self.assertEqual(solve_math("What is 20 percent of 50?"), "10")
+
+    def test_average(self):
+        self.assertEqual(solve_math("What is the average of 10, 20, 30?"), "20")
+        self.assertEqual(solve_math("Average of 4 and 6", ), "5")
+
+    def test_falls_back_to_arithmetic(self):
+        self.assertEqual(solve_math("What is 12 * 34?"), "408")
+
+    # --- Must defer: multi-step word problems the pattern must NOT own ---
+    def test_defer_multistep_percent(self):
+        self.assertIsNone(solve_math(
+            "A store has 240 items. It sells 15% on Monday and 60 more on "
+            "Tuesday. How many items remain?"))
+
+    def test_defer_percent_with_extra_clause(self):
+        self.assertIsNone(solve_math(
+            "15% of 240 employees left; how many stayed?"))
+
+    def test_defer_word_average(self):
+        self.assertIsNone(solve_math(
+            "The average temperature rose over three days; what caused it?"))
 
 
 if __name__ == "__main__":

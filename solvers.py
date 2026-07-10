@@ -194,3 +194,28 @@ def solve_arithmetic(prompt: str) -> str | None:
     if val is None:
         return None
     return _format_number(val)
+
+
+# --- Single-operation word arithmetic ---------------------------------------
+# Each pattern must match the WHOLE prompt (anchored), so a multi-step word
+# problem ("...sells 15% on Monday and 60 more...") never matches and defers to
+# the model. Only a bare single-operation question is owned.
+
+_PCT_OF = re.compile(
+    r"^what\s+is\s+([\d.]+)\s*(?:%|percent)\s+of\s+\$?([\d,.]+)\s*\??$", re.IGNORECASE)
+_AVG_OF = re.compile(
+    r"^(?:what\s+is\s+the\s+)?(?:average|mean)\s+of\s+([\d.,\s]+?(?:\s*,?\s*and\s+[\d.]+)?)\s*\??$",
+    re.IGNORECASE)
+
+
+def solve_math(prompt: str) -> str | None:
+    s = prompt.strip()
+    m = _PCT_OF.match(s)
+    if m:
+        return _format_number(float(m.group(1)) / 100.0 * float(m.group(2).replace(",", "")))
+    m = _AVG_OF.match(s)
+    if m:
+        nums = [float(x) for x in re.findall(r"[\d.]+", m.group(1))]
+        if len(nums) >= 2:
+            return _format_number(sum(nums) / len(nums))
+    return solve_arithmetic(prompt)

@@ -10,7 +10,7 @@ from __future__ import annotations
 import local
 from classifier import Category, classify
 from llm import complete, model_for
-from solvers import solve_arithmetic, solve_logic
+from solvers import solve_logic, solve_math
 
 CHEAP, STRONG, CODE = "cheap", "strong", "code"
 
@@ -70,7 +70,7 @@ _CONFIG: dict[Category, tuple[str, int, str]] = {
 # answer. Order-independent: at most one fires per task.
 _SOLVERS = {
     Category.LOGIC: solve_logic,
-    Category.MATH: solve_arithmetic,
+    Category.MATH: solve_math,
 }
 
 
