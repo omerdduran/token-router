@@ -15,6 +15,7 @@ import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 
+import local
 from agent import solve
 from llm import describe_tiers, usage
 
@@ -91,6 +92,13 @@ def main() -> int:
         print(f"Model tiers: {describe_tiers()}", file=sys.stderr)
     except Exception as exc:
         print(f"WARN: could not resolve model tiers: {exc}", file=sys.stderr)
+
+    # Bring up the bundled local model before answering (best-effort; degrades
+    # to Fireworks-only on any failure).
+    try:
+        local.start()
+    except Exception as exc:
+        print(f"WARN: local model unavailable: {exc}", file=sys.stderr)
 
     results = run(tasks)
 

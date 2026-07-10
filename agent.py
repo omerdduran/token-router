@@ -7,6 +7,7 @@ push the model to answer directly without preamble.
 
 from __future__ import annotations
 
+import local
 from classifier import Category, classify
 from llm import complete, model_for
 from solvers import solve_arithmetic, solve_logic
@@ -85,6 +86,17 @@ def solve(prompt: str) -> str:
             return answer
 
     system, max_tokens, tier = _CONFIG[category]
+
+    # Bundled local model for its reliable categories: zero scored tokens.
+    # Any empty result or error falls through to Fireworks below.
+    if local.available_for(category.value):
+        try:
+            answer = local.complete(system, prompt, max_tokens)
+        except Exception:
+            answer = ""
+        if answer:
+            return answer
+
     primary = model_for(tier)
     # Blank/failed answers retry on the opposite general tier.
     fallback = model_for(STRONG if tier == CHEAP else CHEAP)
