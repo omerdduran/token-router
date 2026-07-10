@@ -13,53 +13,52 @@ from solvers import solve_arithmetic, solve_logic
 
 CHEAP, STRONG, CODE = "cheap", "strong", "code"
 
-# Output-minimizing prompts: the answer only, no chain-of-thought, no
-# explanation. Completion tokens are scored, and a gate-passing entry
-# (TokenForge) proved bare answers hold accuracy at 84.2% — the judge scores
-# the final answer, not the working. Caps fit a compliant short answer with
-# headroom: a terse reply stops at EOS well before them, while a model that
-# ignores "no steps" is truncated rather than billed in full.
-_BASE = "English only. No preamble, no restating the task."
+# Proven config (v3, 16/19 on the leaderboard): the strong tier is a
+# reasoning model (minimax-m3) run with reasoning_effort=none, so it can only
+# reason in VISIBLE chain-of-thought. Removing the "brief steps" instruction
+# (v7) collapsed accuracy to 12/19 — the CoT that costs completion tokens is
+# also what carries correctness on math/logic here. Do not trim it.
+_BASE = "Answer in English. Be concise and direct; no preamble, no restating the question."
 
 _CONFIG: dict[Category, tuple[str, int, str]] = {
     Category.FACTUAL: (
-        f"{_BASE} Answer in one or two short sentences — the fact only.",
-        200, STRONG,
+        f"{_BASE} Give a correct, clear answer in under 120 words.",
+        320, STRONG,
     ),
     Category.MATH: (
-        f"{_BASE} Give only 'Answer: <value>' (with units if relevant). "
-        f"Show no steps or working.",
-        120, STRONG,
+        f"{_BASE} Work through it in brief steps, then end with "
+        f"'Answer: <value>' on its own line.",
+        400, STRONG,
     ),
     Category.SENTIMENT: (
-        f"{_BASE} Reply with one label: positive, negative, or neutral. "
-        f"Add a brief reason only if the task explicitly asks.",
-        60, CHEAP,
+        f"{_BASE} State the sentiment as positive, negative, or neutral, "
+        f"then one short reason.",
+        120, CHEAP,
     ),
     Category.SUMMARIZATION: (
-        f"{_BASE} Output only the summary; obey any stated length or format "
-        f"constraint. Nothing else.",
-        220, CHEAP,
+        f"{_BASE} Output only the summary and obey any length or format "
+        f"constraint stated in the task.",
+        240, CHEAP,
     ),
     Category.NER: (
-        f"{_BASE} List each entity as 'label: value', one per line; labels: "
-        f"person, organization, location, date. Nothing else.",
-        200, CHEAP,
+        f"{_BASE} List each entity as 'label: value', one per line, using "
+        f"the labels person, organization, location, date.",
+        260, CHEAP,
     ),
     Category.CODE_DEBUG: (
-        f"{_BASE} Give only the corrected code in one fenced block. "
-        f"No explanation.",
-        512, CODE,
+        f"{_BASE} State the bug in one sentence, then give the corrected "
+        f"code in a single fenced block.",
+        520, CODE,
     ),
     Category.CODE_GEN: (
-        f"{_BASE} Give only the code in one fenced block, correct and "
-        f"self-contained. No explanation.",
-        512, CODE,
+        f"{_BASE} Output only the code in a single fenced block — correct, "
+        f"complete, and self-contained.",
+        520, CODE,
     ),
     Category.LOGIC: (
-        f"{_BASE} Give only 'Answer: <value>' — the final answer. Show no "
-        f"reasoning.",
-        120, STRONG,
+        f"{_BASE} Reason in brief numbered steps, checking each constraint, "
+        f"then end with 'Answer: <value>' on its own line.",
+        460, STRONG,
     ),
 }
 
