@@ -67,7 +67,7 @@ def main() -> None:
         train_dataset=dataset,
         args=SFTConfig(
             dataset_text_field="text",
-            max_seq_length=MAX_SEQ_LEN,
+            fp16=True,  # T4 is Turing: fp16 only (bf16 needs Ampere+)
             per_device_train_batch_size=2,
             gradient_accumulation_steps=4,
             warmup_ratio=0.05,
