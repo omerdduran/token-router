@@ -129,7 +129,10 @@ _BATCH = os.environ.get("BATCH", "").strip().lower() in ("1", "true", "yes")
 _BATCH_CATEGORIES = {c.strip() for c in
                      os.environ.get("BATCH_CATEGORIES", "sentiment,factual").split(",")
                      if c.strip()}
-_NUM_SPLIT = re.compile(r"(?m)^\s*(\d+)[.):]\s+")
+# A marker on its own line separates answers. Unlike a bare "k.", it can't
+# collide with a numbered chain-of-thought step inside an answer, so math and
+# logic (which reason in numbered steps) can be batched safely too.
+_MARK_SPLIT = re.compile(r"(?m)^\s*===ANSWER\s+(\d+)===\s*$")
 
 
 def batchable(category: Category) -> bool:
@@ -142,17 +145,18 @@ def answer_batch(system: str, max_tokens: int, tier: str, prompts: list[str]):
     n = len(prompts)
     batch_system = (
         f"{system} You are given {n} independent tasks, numbered 1 to {n}. "
-        f"Reply with exactly {n} lines: line k starts with 'k. ' followed only "
-        f"by task k's answer, in order. No preamble, no blank lines.")
-    numbered = "\n".join(f"{i + 1}. {p}" for i, p in enumerate(prompts))
+        f"For each task k, first output a line containing exactly '===ANSWER k==='"
+        f" on its own line, then task k's full answer on the lines below it. Do "
+        f"this for all {n} tasks in order. Output nothing before '===ANSWER 1==='.")
+    numbered = "\n\n".join(f"[Task {i + 1}]\n{p}" for i, p in enumerate(prompts))
     primary = model_for(tier)
     try:
         resp = complete(numbered, system=batch_system,
-                        max_tokens=min(max_tokens * n, 1400),
+                        max_tokens=min(max_tokens * n + 80, 2200),
                         model=primary, fallback_model=None)
     except Exception:
         return None
-    parts = _NUM_SPLIT.split(resp.strip())
+    parts = _MARK_SPLIT.split(resp.strip())
     answers: dict[int, str] = {}
     for i in range(1, len(parts) - 1, 2):
         try:
