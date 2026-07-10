@@ -63,6 +63,7 @@ def main() -> None:
 
     cfg = SFTConfig(
         dataset_text_field="text",
+        dataset_num_proc=1,  # avoid a multiprocessing pickle error in datasets.map
         fp16=True,  # T4 is Turing: fp16 only (bf16 needs Ampere+)
         per_device_train_batch_size=2,
         gradient_accumulation_steps=4,
