@@ -44,27 +44,27 @@ with open(DATA, encoding="utf-8") as fh:
 print(f"loaded {len(rows)} rows")
 ds = Dataset.from_list(rows)
 
-trainer = SFTTrainer(
-    model=model,
-    tokenizer=tok,
-    train_dataset=ds,
-    args=SFTConfig(
-        dataset_text_field="text",
-        max_seq_length=1024,
-        per_device_train_batch_size=8,
-        gradient_accumulation_steps=2,
-        num_train_epochs=3,
-        learning_rate=2e-4,
-        bf16=True,
-        warmup_ratio=0.05,
-        lr_scheduler_type="cosine",
-        optim="adamw_torch",
-        logging_steps=10,
-        output_dir="outputs",
-        report_to="none",
-        seed=42,
-    ),
+cfg = SFTConfig(
+    dataset_text_field="text",
+    max_seq_length=1024,
+    per_device_train_batch_size=8,
+    gradient_accumulation_steps=2,
+    num_train_epochs=3,
+    learning_rate=2e-4,
+    bf16=True,
+    warmup_ratio=0.05,
+    lr_scheduler_type="cosine",
+    optim="adamw_torch",
+    logging_steps=10,
+    output_dir="outputs",
+    report_to="none",
+    seed=42,
 )
+# trl renamed tokenizer -> processing_class in newer versions; support both.
+try:
+    trainer = SFTTrainer(model=model, processing_class=tok, train_dataset=ds, args=cfg)
+except TypeError:
+    trainer = SFTTrainer(model=model, tokenizer=tok, train_dataset=ds, args=cfg)
 trainer.train()
 
 merged = model.merge_and_unload()
