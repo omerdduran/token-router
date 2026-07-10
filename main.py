@@ -10,10 +10,12 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import sys
+import threading
 import time
 import traceback
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import local
 from agent import solve
@@ -55,25 +57,73 @@ def _answer_one(task: dict, index: int) -> dict:
     return {"task_id": task_id, "answer": answer}
 
 
+# Live results, persisted incrementally so a kill (OOM or the harness's
+# timeout) still leaves a valid, scoreable results.json instead of nothing —
+# the difference between a partial score and an INFRA_ERROR. The local model
+# runs on a 4GB/2vCPU box where either failure is possible.
+_results: list[dict] = []
+_results_lock = threading.Lock()
+_output_path = OUTPUT_PATH
+
+
+def _flush() -> None:
+    with _results_lock:
+        snapshot = [dict(r) for r in _results]
+    try:
+        write_results(_output_path, snapshot)
+    except Exception as exc:
+        print(f"WARN: flush failed: {exc}", file=sys.stderr)
+
+
+def _on_signal(signum, _frame):
+    print(f"signal {signum}: flushing partial results", file=sys.stderr)
+    _flush()
+    os._exit(0)
+
+
 def run(tasks: list[dict]) -> list[dict]:
-    if len(tasks) <= 1:
-        return [_answer_one(t, i) for i, t in enumerate(tasks)]
+    global _results
+    # Skeleton first: every task_id present with a blank answer, on disk before
+    # any model call, so the output contract holds even if we die early.
+    _results = [{"task_id": t.get("task_id", f"idx_{i}"), "answer": ""}
+                for i, t in enumerate(tasks)]
+    _flush()
+    if not tasks:
+        return _results
 
     deadline = time.monotonic() + DEADLINE_S
     pool = ThreadPoolExecutor(max_workers=min(MAX_WORKERS, len(tasks)))
-    futures = [pool.submit(_answer_one, t, i) for i, t in enumerate(tasks)]
+    fut_to_idx = {pool.submit(_answer_one, t, i): i for i, t in enumerate(tasks)}
 
-    results: list[dict] = []
-    for i, fut in enumerate(futures):
-        try:
-            results.append(fut.result(timeout=max(1.0, deadline - time.monotonic())))
-        except Exception:  # deadline hit: blank answer, keep the id present
-            results.append({"task_id": tasks[i].get("task_id", f"idx_{i}"), "answer": ""})
+    try:
+        for fut in as_completed(fut_to_idx, timeout=max(1.0, DEADLINE_S)):
+            idx = fut_to_idx[fut]
+            try:
+                res = fut.result()
+                with _results_lock:
+                    _results[idx] = res
+            except Exception:
+                pass
+            _flush()  # persist after every completion
+            if time.monotonic() > deadline:
+                break
+    except Exception:  # as_completed timeout or similar: keep the partial file
+        pass
     pool.shutdown(wait=False, cancel_futures=True)
-    return results
+    _flush()
+    return _results
 
 
 def main() -> int:
+    global _output_path
+    _output_path = OUTPUT_PATH
+    # Flush partial results if the harness kills us (SIGTERM at the time limit).
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            signal.signal(sig, _on_signal)
+        except (ValueError, OSError):
+            pass
+
     missing = [k for k in ("FIREWORKS_API_KEY", "FIREWORKS_BASE_URL", "ALLOWED_MODELS")
                if not os.environ.get(k)]
     if missing:
@@ -92,6 +142,15 @@ def main() -> int:
         print(f"Model tiers: {describe_tiers()}", file=sys.stderr)
     except Exception as exc:
         print(f"WARN: could not resolve model tiers: {exc}", file=sys.stderr)
+
+    # Skeleton before loading the local model: an OOM during model load is a
+    # SIGKILL we can't catch, so a valid (blank) results.json must already be
+    # on disk. run() then updates it in place.
+    global _results
+    with _results_lock:
+        _results = [{"task_id": t.get("task_id", f"idx_{i}"), "answer": ""}
+                    for i, t in enumerate(tasks)]
+    _flush()
 
     # Bring up the bundled local model before answering (best-effort; degrades
     # to Fireworks-only on any failure).
@@ -116,4 +175,10 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    _rc = main()
+    sys.stdout.flush()
+    sys.stderr.flush()
+    # Hard exit: a blocking local-inference thread is non-interruptible and
+    # would otherwise keep the process alive past the deadline. results.json is
+    # already flushed, so this is safe.
+    os._exit(_rc)

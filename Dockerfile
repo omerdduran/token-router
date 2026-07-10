@@ -33,10 +33,12 @@ COPY main.py agent.py classifier.py llm.py solvers.py local.py ./
 
 # Local model handles summarization + NER (measured reliable on a 2B); the
 # grading box has 2 vCPU, so llama.cpp runs on 2 threads.
+# n_ctx=2048 keeps the KV cache small enough to stay well inside 4GB RAM
+# alongside the model, the agent, and Fireworks work.
 ENV LOCAL=true \
     LOCAL_MODEL_PATH=/models/model.gguf \
     LOCAL_CATEGORIES=summarization,ner \
-    LOCAL_CTX_SIZE=4096 \
+    LOCAL_CTX_SIZE=2048 \
     LOCAL_THREADS=2
 
 # Harness mounts /input and /output and injects FIREWORKS_* at run time.
