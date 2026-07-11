@@ -144,17 +144,25 @@ def run(tasks: list[dict]) -> list[dict]:
     # Batch mode: route every task first. Solver/local answers land now;
     # Fireworks tasks are bucketed by (system, max_tokens, tier) so a batch
     # shares one system prompt.
+    #
+    # Local inference is serialized (llama lock) and runs inline here, so a
+    # slow bundled model could eat the whole runtime. Bound it: once the local
+    # budget is spent, remaining tasks skip the local model and go straight to
+    # Fireworks — trading a few tokens for a guaranteed finish (no INFRA_ERROR).
+    local_deadline = time.monotonic() + float(os.environ.get("LOCAL_BUDGET_S", "240"))
     buckets: dict[tuple, list[tuple[int, str]]] = {}
     individual: list[tuple] = []
     for i, t in enumerate(tasks):
         prompt = t.get("prompt", "")
+        allow_local = time.monotonic() < local_deadline
         try:
-            r = agent.route(prompt)
+            r = agent.route(prompt, allow_local=allow_local)
         except Exception:
             individual.append((i, t, None))
             continue
         if r[0] == "done":
             _store(i, t, r[1])
+            _flush()  # local answers are slow; persist each so a kill keeps them
             continue
         _, category, system, max_tokens, tier = r
         if agent.batchable(category):

@@ -25,12 +25,13 @@ CHEAP, STRONG, CODE = "cheap", "strong", "code"
 _BASE = "Answer in English. Be concise and direct; no preamble, no restating the question."
 
 _CONFIG: dict[Category, tuple[str, int, str]] = {
-    # Factual is recall, not reasoning: minimax's visible CoT here is wasted
-    # tokens. Route it to the cheap non-reasoning Gemma MoE; a blank still
-    # rescues to the strong tier (minimax) via solve_remote's fallback.
+    # Factual is recall: minimax under reasoning_effort=none answers it cheaply
+    # (short, no hidden thinking). Routing it to Gemma cost MORE (measured, v16:
+    # gemma needs effort=low → thinking tokens), and the local 2-3B is only ~70%
+    # here, too risky for the gate. So keep factual on the strong tier.
     Category.FACTUAL: (
         f"{_BASE} Give a correct, clear answer in under 120 words.",
-        320, CHEAP,
+        320, STRONG,
     ),
     Category.MATH: (
         f"{_BASE} Work through it in brief steps, then end with "
@@ -80,12 +81,14 @@ _SOLVERS = {
 }
 
 
-def route(prompt: str):
+def route(prompt: str, allow_local: bool = True):
     """Resolve a task as far as possible without a paid call.
 
     Returns ("done", answer) when a deterministic solver or the local model
     already answered it, or ("remote", category, system, max_tokens, tier)
-    when it still needs Fireworks."""
+    when it still needs Fireworks. allow_local=False skips the (potentially
+    slow) local model so a nearly-exhausted time budget still finishes on
+    Fireworks instead of risking a timeout/INFRA_ERROR."""
     category = classify(prompt)
     solver = _SOLVERS.get(category)
     if solver is not None:
@@ -97,7 +100,7 @@ def route(prompt: str):
             return ("done", answer)
 
     system, max_tokens, tier = _CONFIG[category]
-    if local.available_for(category.value):
+    if allow_local and local.available_for(category.value):
         try:
             answer = local.complete(system, prompt, max_tokens)
         except Exception:
