@@ -8,8 +8,11 @@ that matches nothing falls back to FACTUAL (the most general handler).
 
 from __future__ import annotations
 
+import os
 import re
 from enum import Enum
+
+import local
 
 
 class Category(str, Enum):
@@ -101,10 +104,24 @@ def _has_code(text: str) -> bool:
     return bool(_CODE_FENCE.search(text) or _CODE_TOKENS.search(text))
 
 
+_LLM_FALLBACK = os.environ.get("CLASSIFY_FALLBACK", "true").strip().lower() in (
+    "1", "true", "yes")
+
+
 def classify(prompt: str) -> Category:
     text = prompt or ""
     for cat, rxs in _COMPILED:
         if any(rx.search(text) for rx in rxs):
             return cat
-    # No keyword hit: a bare code block is almost always a debugging task.
+    # No keyword hit — the brittle spot on unseen/reworded prompts. Ask the
+    # bundled model to classify semantically (zero Fireworks tokens); this only
+    # fires when regex is already guessing, so it can only improve routing.
+    if _LLM_FALLBACK:
+        lab = local.classify_text(text)
+        if lab:
+            try:
+                return Category(lab)
+            except ValueError:
+                pass
+    # Last resort: a bare code block is almost always a debugging task.
     return Category.CODE_DEBUG if _has_code(text) else Category.FACTUAL

@@ -66,3 +66,36 @@ def complete(system: str, prompt: str, max_tokens: int) -> str:
             temperature=0,
         )
     return (resp["choices"][0]["message"]["content"] or "").strip()
+
+
+_CLASSIFY_LABELS = ("factual", "math", "sentiment", "summarization",
+                    "ner", "code_debug", "code_gen", "logic")
+_CLASSIFY_PROMPT = (
+    "Classify this task into exactly ONE category. Reply with only the category "
+    "name — nothing else.\n"
+    "Categories: factual (knowledge questions), math (calculation/reasoning), "
+    "sentiment (positive/negative/neutral), summarization, ner (extract "
+    "entities), code_debug (fix broken code), code_gen (write new code), "
+    "logic (deduction puzzles).\n\nTask:\n")
+
+
+def classify_text(prompt: str) -> str:
+    """Best-guess category label via the bundled model (zero Fireworks tokens),
+    or '' if the model is unavailable or the reply is unusable. Used only as a
+    semantic fallback when the regex classifier matched nothing."""
+    if _llm is None:
+        return ""
+    try:
+        with _lock:
+            resp = _llm.create_chat_completion(
+                messages=[{"role": "user",
+                           "content": _CLASSIFY_PROMPT + (prompt or "")[:800]}],
+                max_tokens=8, temperature=0)
+        out = (resp["choices"][0]["message"]["content"] or "").strip().lower()
+    except Exception:
+        return ""
+    import re as _re
+    for lab in sorted(_CLASSIFY_LABELS, key=len, reverse=True):
+        if out == lab or out.startswith(lab) or _re.search(rf"\b{lab}\b", out):
+            return lab
+    return ""
