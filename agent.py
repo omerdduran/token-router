@@ -25,9 +25,12 @@ CHEAP, STRONG, CODE = "cheap", "strong", "code"
 _BASE = "Answer in English. Be concise and direct; no preamble, no restating the question."
 
 _CONFIG: dict[Category, tuple[str, int, str]] = {
+    # Factual is recall, not reasoning: minimax's visible CoT here is wasted
+    # tokens. Route it to the cheap non-reasoning Gemma MoE; a blank still
+    # rescues to the strong tier (minimax) via solve_remote's fallback.
     Category.FACTUAL: (
         f"{_BASE} Give a correct, clear answer in under 120 words.",
-        320, STRONG,
+        320, CHEAP,
     ),
     Category.MATH: (
         f"{_BASE} Work through it in brief steps, then end with "

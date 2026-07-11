@@ -130,13 +130,37 @@ def describe_tiers() -> str:
 
 _LOCK = threading.Lock()
 _USAGE = {"prompt": 0, "completion": 0, "total": 0, "calls": 0}
-# Models that rejected reasoning_effort; stop sending it to them.
+# Models that rejected reasoning_effort OR returned blank under it; stop
+# sending it to them.
 _NO_EFFORT: set[str] = set()
 # Thinking tokens are scored; 'none' suppresses hidden reasoning that would
 # otherwise drain the budget and sometimes return blank content.
 _EFFORT = os.environ.get("REASONING_EFFORT", "none")
+# Gemma-4 "configurable thinking" models return EMPTY content under
+# reasoning_effort=none (measured: strong tier on gemma collapsed to 6-7/19).
+# Give them a real effort so they actually answer; a blank still self-heals by
+# retrying without the parameter (see _chat).
+_GEMMA_EFFORT = os.environ.get("GEMMA_EFFORT", "low").strip()
+
+
+def _effort_for(model: str) -> str:
+    return _GEMMA_EFFORT if "gemma" in model.lower() else _EFFORT
+
 
 _THINK = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
+
+
+def _extract(msg) -> str:
+    """Answer text, resilient to thinking-model quirks: prefer content with the
+    <think> block stripped; if that empties it, keep the raw content; finally
+    fall back to a split-out reasoning_content field some backends use."""
+    content = msg.content or ""
+    stripped = _THINK.sub("", content).strip()
+    if stripped:
+        return stripped
+    if content.strip():
+        return content.strip()
+    return (getattr(msg, "reasoning_content", None) or "").strip()
 
 
 def usage() -> dict[str, int]:
@@ -155,25 +179,34 @@ def _record(u) -> None:
 
 
 def _chat(model: str, messages: list[dict], max_tokens: int) -> str:
-    kwargs = {}
-    if _EFFORT and model not in _NO_EFFORT:
-        kwargs["reasoning_effort"] = _EFFORT
-    try:
-        resp = _client().chat.completions.create(
+    effort = _effort_for(model)
+
+    def _create(send_effort: bool):
+        kwargs = {"reasoning_effort": effort} if (send_effort and effort) else {}
+        return _client().chat.completions.create(
             model=model, messages=messages, max_tokens=max_tokens,
             temperature=0, **kwargs,
         )
+
+    send = bool(effort) and model not in _NO_EFFORT
+    try:
+        resp = _create(send)
     except Exception as exc:
-        if kwargs and "reasoning_effort" in str(exc):
+        if send and "reasoning_effort" in str(exc):
             _NO_EFFORT.add(model)
-            resp = _client().chat.completions.create(
-                model=model, messages=messages, max_tokens=max_tokens,
-                temperature=0,
-            )
+            resp = _create(False)
         else:
             raise
     _record(getattr(resp, "usage", None))
-    return _THINK.sub("", resp.choices[0].message.content or "").strip()
+    out = _extract(resp.choices[0].message)
+    # A blank answer under an effort setting (Gemma-4's failure mode) scores
+    # zero; retry once without the parameter and remember to skip it hereafter.
+    if not out and send:
+        _NO_EFFORT.add(model)
+        resp = _create(False)
+        _record(getattr(resp, "usage", None))
+        out = _extract(resp.choices[0].message)
+    return out
 
 
 def complete(prompt: str, system: str, max_tokens: int, model: str,
