@@ -28,6 +28,16 @@ MAX_WORKERS = int(os.environ.get("MAX_WORKERS", "8"))
 # Stop with headroom before the harness's 10-minute kill so results.json is
 # always written, even if a few tasks never come back.
 DEADLINE_S = float(os.environ.get("DEADLINE_S", "480"))
+# Hard wall-clock ceiling for the WHOLE run (local inference + Fireworks pool),
+# measured from process start, kept well under the 600s harness kill. The local
+# routing loop and the Fireworks pool are serial, so each must respect this or
+# their budgets could sum past 600s and TIMEOUT.
+GLOBAL_DEADLINE_S = float(os.environ.get("GLOBAL_DEADLINE_S", "540"))
+_START = time.monotonic()
+
+
+def _global_deadline() -> float:
+    return _START + GLOBAL_DEADLINE_S
 
 
 def load_tasks(path: str) -> list[dict]:
@@ -107,11 +117,14 @@ def _run_pool(work: list[tuple]) -> None:
     completion and stopping at the deadline. spec None → full solve()."""
     if not work:
         return
-    deadline = time.monotonic() + DEADLINE_S
+    # Whichever comes first: the pool's own budget, or the global ceiling (so
+    # time already spent on local inference is subtracted here).
+    deadline = min(time.monotonic() + DEADLINE_S, _global_deadline())
+    timeout = max(1.0, deadline - time.monotonic())
     pool = ThreadPoolExecutor(max_workers=min(MAX_WORKERS, len(work)))
     fut_to_idx = {pool.submit(_answer_remote, task, i, spec): i for i, task, spec in work}
     try:
-        for fut in as_completed(fut_to_idx, timeout=max(1.0, DEADLINE_S)):
+        for fut in as_completed(fut_to_idx, timeout=timeout):
             idx = fut_to_idx[fut]
             try:
                 with _results_lock:
@@ -146,10 +159,18 @@ def run(tasks: list[dict]) -> list[dict]:
     # shares one system prompt.
     #
     # Local inference is serialized (llama lock) and runs inline here, so a
-    # slow bundled model could eat the whole runtime. Bound it: once the local
-    # budget is spent, remaining tasks skip the local model and go straight to
-    # Fireworks — trading a few tokens for a guaranteed finish (no INFRA_ERROR).
-    local_deadline = time.monotonic() + float(os.environ.get("LOCAL_BUDGET_S", "240"))
+    # slow bundled model could eat the whole runtime. Two guards bound it:
+    #   1. A time BUDGET reserved per task from measured tok/s (local.try_reserve):
+    #      the box only commits to local work it can finish; long-output tasks on
+    #      a slow box shed to Fireworks up front.
+    #   2. A wall-clock backstop below, in case the estimate under-reads.
+    # Either way the run finishes (no TIMEOUT), trading a few tokens for safety.
+    local_budget = float(os.environ.get("LOCAL_BUDGET_S", "240"))
+    local.set_budget(local_budget)
+    # Never let local work run past a point that leaves no room for the
+    # Fireworks pool before the global ceiling (reserve ~40% for remote).
+    local_deadline = min(time.monotonic() + local_budget,
+                         _START + 0.6 * GLOBAL_DEADLINE_S)
     buckets: dict[tuple, list[tuple[int, str]]] = {}
     individual: list[tuple] = []
     for i, t in enumerate(tasks):
