@@ -32,12 +32,12 @@ export const Intro: React.FC = () => {
         </div>
         <Rise delay={35}>
           <div style={{fontSize: 44, fontWeight: 300, color: T.muted, marginTop: 26}}>
-            the prove-or-escalate agent
+            the local-first routing agent
           </div>
         </Rise>
         <Rise delay={60}>
           <div style={{fontSize: 38, marginTop: 60, opacity: 0.9}}>
-            It never pays for what it can prove.
+            The cheapest token is the one you never send.
           </div>
         </Rise>
       </Center>
@@ -131,7 +131,7 @@ export const Idea: React.FC = () => {
         >
           <Card accent style={{padding: '30px 60px'}}>
             <div style={{fontSize: 52, fontWeight: 800}}>
-              …unless you can <span style={{color: T.warm}}>prove it for free</span>
+              …unless a local model answers it <span style={{color: T.warm}}>for free</span>
             </div>
           </Card>
         </div>
@@ -143,30 +143,30 @@ export const Idea: React.FC = () => {
 /* ————— Scene 3 · The ladder, animated ————— */
 const TIERS = [
   {
-    k: 'TIER 0 · 0 TOKENS',
-    name: 'Plain Go code',
-    rows: ['arithmetic AST', '6 puzzle solvers', 'mutation repair', 'proven library'],
+    k: 'LAYER 0-1 · 0 TOKENS',
+    name: 'Classify + solve',
+    rows: ['regex classifier', 'local-model fallback', 'logic solvers', 'arithmetic eval'],
     border: 'rgba(255,122,26,0.6)',
   },
   {
-    k: 'TIER 1 · 0 TOKENS',
+    k: 'LAYER 2 · 0 TOKENS',
     name: 'Bundled Gemma 4 E2B',
-    rows: ['code runs vs prompt tests', 'math recomputed in Go', 'format & length gates'],
+    rows: ['math · sentiment · NER', 'summarization · factual', 'adaptive speed guard'],
     border: 'rgba(255,122,26,0.6)',
   },
   {
-    k: 'TIER 2 · MINIMAL SPEND',
+    k: 'LAYER 3 · MINIMAL SPEND',
     name: 'Fireworks API',
-    rows: ['terse prompts', 'reasoning_effort: none', 'prefix-cache affinity'],
+    rows: ['code · logic only', 'reasoning_effort: none', 'tiers from ALLOWED_MODELS'],
     border: 'rgba(100,116,139,0.8)',
   },
 ];
 
 // task pill journeys: [tier it settles in, settle frame]
 const PILLS = [
-  {label: 'task A', settles: 0, start: 90, color: T.good, verdict: '✓ proved · 0 tokens'},
-  {label: 'task B', settles: 1, start: 190, color: T.good, verdict: '✓ verified · 0 tokens'},
-  {label: 'task C', settles: 2, start: 300, color: T.warm, verdict: '23 tokens'},
+  {label: 'sentiment', settles: 1, start: 90, color: T.good, verdict: '✓ local · 0 tokens'},
+  {label: 'factual', settles: 1, start: 190, color: T.good, verdict: '✓ local · 0 tokens'},
+  {label: 'code', settles: 2, start: 300, color: T.warm, verdict: '→ Fireworks'},
 ];
 
 export const Ladder: React.FC = () => {
@@ -258,15 +258,15 @@ export const Ladder: React.FC = () => {
 export const Numbers: React.FC = () => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
-  const cache = interpolate(frame, [150, 210], [0, 54 / 62], {
+  const cache = interpolate(frame, [150, 210], [0, 5 / 8], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
     easing: Easing.out(Easing.cubic),
   });
   const stats = [
-    {big: '~2/3', small: 'of tasks answered at\nzero scored tokens'},
-    {big: '20 → 7', small: 'calls on the hard set\n(−65%)'},
-    {big: '31 → 2', small: 'reasoning tokens with\neffort: none (live)'},
+    {big: '16', small: 'small models benchmarked\nto pick the engine'},
+    {big: 'no TIMEOUT', small: 'hardware-adaptive routing\nnever overruns'},
+    {big: 'samples', small: "validated on the\norganizers' public set"},
   ];
   return (
     <Bg>
@@ -274,16 +274,14 @@ export const Numbers: React.FC = () => {
         <Kicker>Measured results</Kicker>
         <div style={{fontSize: 200, fontWeight: 800, letterSpacing: '-0.03em', marginTop: 10}}>
           <span style={{color: T.hot}}>
-            <Counter from={59} to={59} start={0} duration={1} />
+            <Counter from={0} to={5} start={10} duration={45} />
           </span>
-          <span style={{color: T.muted, margin: '0 30px'}}>→</span>
-          <span style={{color: T.warm}}>
-            <Counter from={59} to={23} start={25} duration={55} />
-          </span>
+          <span style={{color: T.muted, margin: '0 24px'}}>/</span>
+          <span style={{color: T.warm}}>8</span>
         </div>
         <Rise delay={85}>
           <div style={{fontSize: 42, marginTop: 4}}>
-            Fireworks calls on our 64-task eval — <b style={{color: T.hot}}>−61%</b>
+            categories answered at <b style={{color: T.hot}}>zero Fireworks tokens</b>
           </div>
         </Rise>
 
@@ -306,8 +304,8 @@ export const Numbers: React.FC = () => {
         <Rise delay={150}>
           <div style={{width: 900, marginTop: 66}}>
             <div style={{display: 'flex', justifyContent: 'space-between', fontSize: 24, color: T.muted}}>
-              <span>prompt prefix served from cache (measured live)</span>
-              <span style={{fontFamily: T.mono, color: T.warm}}>54 / 62</span>
+              <span>categories answered locally, at zero tokens</span>
+              <span style={{fontFamily: T.mono, color: T.warm}}>5 / 8</span>
             </div>
             <div
               style={{
@@ -338,8 +336,8 @@ export const Numbers: React.FC = () => {
 export const Bakeoff: React.FC = () => {
   const frame = useCurrentFrame();
   const rows = [
-    {name: 'Gemma 4 E2B (ours)', wrong: 2, color: T.good},
-    {name: 'Gemma 3 4B (bigger)', wrong: 12, color: T.bad},
+    {name: 'gemma-4-E2B (ours)', wrong: 4, tag: 'fast → stays local', color: T.good},
+    {name: 'Qwen3-4B (bigger)', wrong: 13, tag: 'too slow → sheds to API', color: T.bad},
   ];
   const flash = interpolate(frame % 30, [0, 15, 30], [1, 0.55, 1]);
   return (
@@ -352,15 +350,15 @@ export const Bakeoff: React.FC = () => {
 
         <Rise delay={30}>
           <div style={{fontSize: 32, color: T.muted, marginTop: 40, maxWidth: 1250}}>
-            Research suggested a stronger local model. We ran a 54-task bake-off with a
-            3-judge panel — and counted <b style={{color: T.ink}}>wrong free answers</b>, the
-            metric that loses the accuracy gate.
+            We benchmarked <b style={{color: T.ink}}>16 small models</b> on the real
+            4 GB / 2 vCPU box — accuracy <i>and</i> speed. The bigger models scored higher,
+            but were too slow to finish work locally.
           </div>
         </Rise>
 
         <div style={{marginTop: 70}}>
           {rows.map((r, i) => {
-            const w = interpolate(frame, [60 + i * 20, 120 + i * 20], [0, (r.wrong / 12) * 1150], {
+            const w = interpolate(frame, [60 + i * 20, 120 + i * 20], [0, (r.wrong / 13) * 1150], {
               extrapolateLeft: 'clamp',
               extrapolateRight: 'clamp',
               easing: Easing.out(Easing.cubic),
@@ -378,8 +376,8 @@ export const Bakeoff: React.FC = () => {
                       opacity: r.wrong > 6 ? flash : 1,
                     }}
                   />
-                  <div style={{fontSize: 46, fontWeight: 800, color: r.color}}>
-                    {frame > 120 + i * 20 ? r.wrong : ''}
+                  <div style={{fontSize: 34, fontWeight: 800, color: r.color, whiteSpace: 'nowrap'}}>
+                    {frame > 120 + i * 20 ? r.tag : ''}
                   </div>
                 </div>
               </div>
@@ -390,8 +388,8 @@ export const Bakeoff: React.FC = () => {
         <Rise delay={175}>
           <Card accent style={{maxWidth: 1300}}>
             <div style={{fontSize: 34}}>
-              <b>6× more wrong answers.</b> The bigger model lost — calibration to the
-              verification gates beats raw strength. <span style={{color: T.warm}}>E2B stays.</span>
+              <b>A slow model just sheds its work back to the API</b> — more tokens, not
+              fewer. Fast <i>and</i> accurate wins. <span style={{color: T.warm}}>E2B is Pareto-optimal.</span>
             </div>
           </Card>
         </Rise>
@@ -402,12 +400,12 @@ export const Bakeoff: React.FC = () => {
 
 /* ————— Scene 6 · Robustness ————— */
 const SHIELDS = [
-  ['📄', 'skeleton results.json at startup'],
-  ['⚛️', 'atomic writes — never half-written'],
+  ['📄', 'skeleton results.json before the model loads'],
+  ['💾', 'incremental flush — every answer hits disk'],
   ['🛑', 'SIGTERM flush — partial answers survive'],
-  ['🧯', 'per-task panic isolation'],
-  ['⏱️', 'pacer degrades gracefully under pressure'],
-  ['🧪', 'fuzz-tested: 200k-char prompts, no panics'],
+  ['🧯', 'per-task isolation — one bad prompt is contained'],
+  ['⏱️', 'global deadline ceiling — never overruns the kill'],
+  ['🔻', 'graceful degrade to Fireworks-only on any local fail'],
 ];
 
 export const Robustness: React.FC = () => {
@@ -443,7 +441,7 @@ export const Robustness: React.FC = () => {
         <Rise delay={95}>
           <div style={{marginTop: 56, fontSize: 30, textAlign: 'center', color: T.muted}}>
             verified under the real limits: <span style={{fontFamily: T.mono, color: T.warm}}>--memory 4g --cpus 2</span>
-            {'  '}→ model up in 21 s · 8/8 answered · exit 0
+            {'  '}→ answered locally at 0 tokens · exit 0
           </div>
         </Rise>
       </AbsoluteFill>
@@ -469,14 +467,14 @@ export const Outro: React.FC = () => {
           </div>
           <Rise delay={25}>
             <div style={{fontSize: 46, marginTop: 34}}>
-              Prove it for free — <span style={{color: T.warm}}>or buy the minimum.</span>
+              Answer for free — <span style={{color: T.warm}}>or buy the minimum.</span>
             </div>
           </Rise>
           <Rise delay={50}>
             <div style={{fontSize: 28, color: T.muted, marginTop: 60, lineHeight: 1.8}}>
-              Go orchestrator · llama.cpp + Gemma 4 E2B in-container · Fireworks AI escalation
+              Python orchestrator · llama.cpp + Gemma 4 E2B in-container · Fireworks AI escalation
               <br />
-              every claim measured & logged in eval/PERF.md
+              5 of 8 categories at zero tokens · hardware-adaptive · never times out
             </div>
           </Rise>
           <Rise delay={70}>

@@ -50,7 +50,7 @@ export const Cover: React.FC = () => (
       <Wordmark size={165} />
 
       <div style={{fontSize: 42, fontWeight: 300, color: T.muted, marginTop: 22}}>
-        the prove-or-escalate agent
+        the local-first routing agent
       </div>
 
       <div
@@ -61,11 +61,11 @@ export const Cover: React.FC = () => (
           marginTop: 66,
         }}
       >
-        <Chip k="TIER 0 · FREE" name="plain Go code" />
+        <Chip k="LAYER 0-1 · FREE" name="classify + solve" />
         <Arrow />
-        <Chip k="TIER 1 · FREE" name="local Gemma, verified" />
+        <Chip k="LAYER 2 · FREE" name="local Gemma · 5/8" />
         <Arrow />
-        <Chip k="TIER 2 · MINIMAL" name="Fireworks API" dim />
+        <Chip k="LAYER 3 · MINIMAL" name="Fireworks API" dim />
       </div>
 
       <div
