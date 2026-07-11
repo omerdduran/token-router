@@ -39,8 +39,10 @@ _CONFIG: dict[Category, tuple[str, int, str]] = {
         400, STRONG,
     ),
     Category.SENTIMENT: (
-        f"{_BASE} State the sentiment as positive, negative, or neutral, "
-        f"then one short reason.",
+        f"{_BASE} State the sentiment as positive, negative, neutral, or mixed. "
+        f"Then give a one-sentence reason. If the text has both good and bad "
+        f"points, say 'mixed' (or 'neutral') and your reason MUST mention both "
+        f"the positive and the negative aspects.",
         120, CHEAP,
     ),
     Category.SUMMARIZATION: (
