@@ -196,9 +196,12 @@ def run(tasks: list[dict]) -> list[dict]:
     for i, t, spec in remote_jobs:
         _submit(i, t, spec)
 
-    # Local worker on this thread, overlapping the pool. Stop taking local work a
-    # little before the global ceiling so shed jobs still get pool time.
-    local_cutoff = _global_deadline() - 45.0
+    # Local worker on this thread, overlapping the pool. local.complete() is a
+    # blocking, non-interruptible C call, so a task started near the cutoff still
+    # runs to completion — the cutoff must leave room for one worst-case local
+    # inference PLUS the pool drain before the harness kill (~600s). Half the
+    # global ceiling is deliberately conservative.
+    local_cutoff = _START + 0.5 * GLOBAL_DEADLINE_S
     for (i, t, system, prompt, max_tokens, tier) in local_jobs:
         if time.monotonic() > local_cutoff:
             _submit(i, t, (system, max_tokens, tier))    # out of time → Fireworks
