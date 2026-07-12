@@ -253,6 +253,16 @@ fast but drops below usefulness (esp. sentiment/ner). Qwen was Qwen3 needs
   GB > 4 GB → OOM. Only one model fits in RAM.
 - **Qwen3-4B (or any 4B) as the local model:** too slow on 2 vCPU; the speed
   guard sheds its work to the API → high tokens (v20 TIMEOUT, v22 4.7k).
+- **A SMALLER model for speed (measured 12 Jul, identical in-container QEMU
+  procedure, ratios transfer to the real box):** E2B Q3 = 2.32 tok/s (load
+  13.4s); **Qwen2.5-1.5B Q4 = 2.82 tok/s — only +22%** (load 3.3s), and it
+  INVERTED the NER format ("value: label") in the spot check; **gemma-2-2b Q4
+  = 2.10 tok/s — SLOWER than E2B** (the old "fastest" note came from native
+  Mac, not CPU llama.cpp). E2B's MatFormer is already ~as fast per token as a
+  dense 1.5B on CPU. A ~22% throughput gain doesn't buy ZERO_API_CALLS and
+  costs real accuracy (math 100→79, sentiment 88→79, NER format risk). Going
+  smaller still (Qwen3-0.6B: 17% logic) is below-gate territory. **The speed
+  lever is NOT the model — it's queue ordering and the time budget.**
 
 ---
 
@@ -293,9 +303,11 @@ fast but drops below usefulness (esp. sentiment/ner). Qwen was Qwen3 needs
 - **Does v28 (all local) fit the 10-min budget on the real box?** Unknown until
   submitted — E2B's real 2-vCPU tokens/sec is the deciding number. If it sheds a
   lot, tighten caps further or try a faster model that still clears 50%.
-- **A faster local model** (Qwen2.5-1.5B ~70% overall, or a distilled model)
-  might finish ALL tasks locally in time at ≥50% → true 0 tokens. Trade accuracy
-  for speed since the gate is only 50%.
+- ~~A faster local model~~ **MEASURED AND CLOSED (12 Jul, see §7):**
+  Qwen2.5-1.5B is only +22% vs E2B on this box, gemma-2-2b is slower. Not
+  worth the accuracy loss. The remaining token levers on the v28 base:
+  cheapest-first queue ordering (best expected value), cutoff 0.65→0.70,
+  remote cap trims for math/logic.
 - **Aggressive output minimization** (tiny caps, no CoT) on any remaining remote
   calls — viable now the gate is 50%, but risks the hidden-set margin.
 - **Budget the classifier fallback** (count its inference against the local
