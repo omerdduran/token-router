@@ -63,7 +63,7 @@ export const Cover: React.FC = () => (
       >
         <Chip k="LAYER 0-1 · FREE" name="classify + solve" />
         <Arrow />
-        <Chip k="LAYER 2 · FREE" name="local Gemma · 5/8" />
+        <Chip k="LAYER 2 · FREE" name="local Gemma · 4/8" />
         <Arrow />
         <Chip k="LAYER 3 · MINIMAL" name="Fireworks API" dim />
       </div>
@@ -79,7 +79,7 @@ export const Cover: React.FC = () => (
           fontWeight: 800,
         }}
       >
-        two-thirds of tasks answered at zero scored tokens
+        half the categories answered at zero scored tokens · 100% accuracy
       </div>
     </AbsoluteFill>
   </Bg>

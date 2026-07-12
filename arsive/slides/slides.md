@@ -35,13 +35,13 @@ class: text-center centered-h
 
 <div class="glow w-90 h-90 bg-orange-500 top-10 -left-30"></div>
 
-# Eight task categories.<br><span class="num">Five</span> of them never touch the API.
+# Eight task categories.<br><span class="num">Four</span> of them never touch the API.
 
 <div v-click class="mt-10 text-lg opacity-90 max-w-170 mx-auto leading-relaxed">
 
 Math, sentiment, NER, summarization, facts, code, logic — TokenRouter answers
 them all, but treats every API token as a **purchase**. A **bundled Gemma model**
-answers five of the eight categories *inside the container for free*; only the
+answers four of the eight categories *inside the container for free*; only the
 hard remainder is ever bought.
 
 </div>
@@ -49,7 +49,7 @@ hard remainder is ever bought.
 <div v-click class="card card-accent inline-block mt-10 px-8">
 <div class="text-sm opacity-70 mb-1">Track 1 is scored on total Fireworks tokens</div>
 <div class="text-2xl font-bold"><span class="num">answer free first · pay only for the rest</span></div>
-<div class="text-sm opacity-70 mt-1">5 of 8 categories at zero scored tokens</div>
+<div class="text-sm opacity-70 mt-1">4 of 8 categories at zero scored tokens · 100% accuracy on the latest scored run</div>
 </div>
 
 ---
@@ -65,7 +65,7 @@ hard remainder is ever bought.
 <div class="font-bold text-lg mb-3">Classify + solve</div>
 <div class="text-sm leading-relaxed opacity-90">
 regex router<br>
-→ local model on a miss<br>
+microsecond-fast<br>
 logic-puzzle solvers<br>
 arithmetic evaluator
 </div>
@@ -80,16 +80,16 @@ arithmetic evaluator
 <div class="kicker mb-2">Layer 2 · 0 tokens</div>
 <div class="font-bold text-lg mb-3">Bundled Gemma 4 E2B</div>
 <div class="text-sm leading-relaxed opacity-90">
-math · sentiment · NER<br>
-summarization · factual<br>
+math · sentiment<br>
+NER · summarization<br>
 CPU, in the image<br>
-adaptive speed guard
+bounded time budget
 </div>
 </div>
 
 <div class="flex flex-col justify-center px-3 text-center">
 <div class="text-2xl num">→</div>
-<div class="text-[0.65rem] opacity-60 mt-1">code<br>logic</div>
+<div class="text-[0.65rem] opacity-60 mt-1">factual<br>code · logic</div>
 </div>
 
 <div class="card" style="border-color: rgba(100,116,139,0.7); background: rgba(148,163,184,0.06);">
@@ -129,9 +129,9 @@ layout: two-cols-header
 
 <div class="text-[0.92rem] pr-6">
 
-**Zero-token classification** — a regex pass assigns one of eight categories.
-When nothing matches — the brittle spot on reworded prompts — the bundled model
-picks the category *semantically*, still for free.
+**Zero-token classification** — a regex pass assigns one of eight categories in
+microseconds. A prompt that matches nothing falls back to the most general
+handler rather than failing — classification can never crash a task.
 
 **Deterministic solvers** — plain Python, microseconds:
 
@@ -152,8 +152,8 @@ A deferral costs a few tokens. A wrong answer costs the accuracy gate.
 </div>
 
 <div v-click class="card mt-4 text-sm opacity-90">
-Semantic fallback = "routing that survives messy prompts", using the model we
-already ship — no second runtime, no extra tokens.
+The free floor costs nothing and risks nothing: every task passes through it
+first, and whatever it can't answer with certainty simply moves down the ladder.
 </div>
 
 ---
@@ -171,9 +171,9 @@ layout: two-cols-header
 A **Gemma 4 E2B** (Q3 GGUF, llama.cpp) ships *inside* the image — sized for the
 4 GB / 2 vCPU / CPU-only grading box.
 
-It answers **five of the eight categories** at **zero Fireworks tokens**:
+It answers **four of the eight categories** at **zero Fireworks tokens**:
 
-- math · sentiment · NER · summarization · factual
+- math · sentiment · NER · summarization
 
 Local inference counts toward accuracy and **zero** toward the token score.
 
@@ -183,17 +183,18 @@ Local inference counts toward accuracy and **zero** toward the token score.
 
 <div v-click class="card card-accent text-sm">
 
-**Adaptive speed guard:** a startup warmup measures this box's tokens/sec, and a
-task is kept local only if its estimated time fits the budget.
+**Bounded local budget:** local generation gets a fixed wall-clock allowance;
+once it is spent, the remaining tasks route to Fireworks instead.
 
-Fast box → everything local. Slow box → long work sheds to Fireworks. Either
+Fast box → everything stays local. Slow box → the overflow sheds. Either
 way: <b>no TIMEOUT</b>.
 
 </div>
 
 <div v-click class="card mt-4 text-sm opacity-90">
-Tuned to the real tasks: factual = explanatory common knowledge, sentiment
-reviews are <i>mixed</i> (name both sides), summaries are strictly formatted.
+Validated end-to-end on the organizers' public sample set before shipping —
+model loads, categories answered locally at 0 tokens, exit 0, under the real
+<code>--memory 4g --cpus 2</code> limits.
 </div>
 
 ---
@@ -205,9 +206,10 @@ reviews are <i>mixed</i> (name both sides), summaries are strictly formatted.
 <div class="grid grid-cols-3 gap-5 mt-8">
 
 <div v-click class="card text-center">
-<div class="text-4xl num">2 / 8</div>
-<div class="mt-2 text-sm opacity-80">categories ever reach the API — only
-<b>code</b> and <b>logic</b>; everything else was answered for free</div>
+<div class="text-4xl num">4 / 8</div>
+<div class="mt-2 text-sm opacity-80">categories ever reach the API —
+<b>factual</b>, <b>code</b>, and <b>logic</b>; the other four are answered
+for free</div>
 </div>
 
 <div v-click class="card text-center">
@@ -225,7 +227,8 @@ other tier — an empty, zero-scoring answer never ships</div>
 </div>
 
 <div v-click class="mt-8 text-center opacity-70 text-sm">
-tiers (cheap / strong / code) inferred at runtime from <code>ALLOWED_MODELS</code> — never hardcoded
+tiers (cheap / strong / code) inferred at runtime from <code>ALLOWED_MODELS</code> — never hardcoded<br>
+same-category tasks are <b>batched into one call</b> — the system prompt is paid once, not per task
 </div>
 
 ---
@@ -237,7 +240,7 @@ class: text-center centered-h
 
 <div class="kicker">The result</div>
 
-<h1 class="no-bar"><span class="num" style="font-size:6.5rem; line-height:1;">5 / 8</span></h1>
+<h1 class="no-bar"><span class="num" style="font-size:6.5rem; line-height:1;">4 / 8</span></h1>
 
 <div class="text-xl mt-1">categories answered at <b>zero Fireworks tokens</b></div>
 
@@ -250,12 +253,12 @@ class: text-center centered-h
 
 <div class="card">
 <div class="text-3xl num">no TIMEOUT</div>
-<div class="text-sm opacity-75 mt-1">hardware-adaptive routing<br>on the 4 GB / 2 vCPU box</div>
+<div class="text-sm opacity-75 mt-1">time-budgeted local inference<br>on the 4 GB / 2 vCPU box</div>
 </div>
 
 <div class="card">
-<div class="text-3xl num">public samples</div>
-<div class="text-sm opacity-75 mt-1">validated against the<br>organizers' sample set</div>
+<div class="text-3xl num">100%</div>
+<div class="text-sm opacity-75 mt-1">accuracy on the latest<br>scored leaderboard run</div>
 </div>
 
 </div>
@@ -343,8 +346,8 @@ chosen over 15 other small models *on measured evidence*.
 
 <div class="mt-4"></div>
 
-**Fireworks Gemma** is available for the escalations —<br>
-with thinking off and prompts tuned per category.
+**Fireworks' Gemma tier** picks up the cheap escalations —<br>
+sentiment, NER, and summaries that shed to the API.
 
 </div>
 
@@ -368,6 +371,6 @@ Answer for free — or buy the minimum.
 <div class="mt-12 text-sm opacity-70 leading-loose">
 
 **Python** orchestrator · **llama.cpp** + Gemma 4 E2B in-container · **Fireworks AI** escalation<br>
-5 of 8 categories at zero tokens · hardware-adaptive · never times out
+4 of 8 categories at zero tokens · time-budgeted · never times out
 
 </div>

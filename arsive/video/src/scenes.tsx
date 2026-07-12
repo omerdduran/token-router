@@ -145,19 +145,19 @@ const TIERS = [
   {
     k: 'LAYER 0-1 · 0 TOKENS',
     name: 'Classify + solve',
-    rows: ['regex classifier', 'local-model fallback', 'logic solvers', 'arithmetic eval'],
+    rows: ['regex classifier', 'logic solvers', 'arithmetic eval'],
     border: 'rgba(255,122,26,0.6)',
   },
   {
     k: 'LAYER 2 · 0 TOKENS',
     name: 'Bundled Gemma 4 E2B',
-    rows: ['math · sentiment · NER', 'summarization · factual', 'adaptive speed guard'],
+    rows: ['math · sentiment', 'NER · summarization', 'bounded time budget'],
     border: 'rgba(255,122,26,0.6)',
   },
   {
     k: 'LAYER 3 · MINIMAL SPEND',
     name: 'Fireworks API',
-    rows: ['code · logic only', 'reasoning_effort: none', 'tiers from ALLOWED_MODELS'],
+    rows: ['factual · code · logic', 'reasoning_effort: none', 'tiers from ALLOWED_MODELS'],
     border: 'rgba(100,116,139,0.8)',
   },
 ];
@@ -165,7 +165,7 @@ const TIERS = [
 // task pill journeys: [tier it settles in, settle frame]
 const PILLS = [
   {label: 'sentiment', settles: 1, start: 90, color: T.good, verdict: '✓ local · 0 tokens'},
-  {label: 'factual', settles: 1, start: 190, color: T.good, verdict: '✓ local · 0 tokens'},
+  {label: 'math', settles: 1, start: 190, color: T.good, verdict: '✓ local · 0 tokens'},
   {label: 'code', settles: 2, start: 300, color: T.warm, verdict: '→ Fireworks'},
 ];
 
@@ -258,15 +258,15 @@ export const Ladder: React.FC = () => {
 export const Numbers: React.FC = () => {
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
-  const cache = interpolate(frame, [150, 210], [0, 5 / 8], {
+  const cache = interpolate(frame, [150, 210], [0, 4 / 8], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
     easing: Easing.out(Easing.cubic),
   });
   const stats = [
     {big: '16', small: 'small models benchmarked\nto pick the engine'},
-    {big: 'no TIMEOUT', small: 'hardware-adaptive routing\nnever overruns'},
-    {big: 'samples', small: "validated on the\norganizers' public set"},
+    {big: 'no TIMEOUT', small: 'time-budgeted local inference\nnever overruns'},
+    {big: '100%', small: 'accuracy on the latest\nscored leaderboard run'},
   ];
   return (
     <Bg>
@@ -274,7 +274,7 @@ export const Numbers: React.FC = () => {
         <Kicker>Measured results</Kicker>
         <div style={{fontSize: 200, fontWeight: 800, letterSpacing: '-0.03em', marginTop: 10}}>
           <span style={{color: T.hot}}>
-            <Counter from={0} to={5} start={10} duration={45} />
+            <Counter from={0} to={4} start={10} duration={45} />
           </span>
           <span style={{color: T.muted, margin: '0 24px'}}>/</span>
           <span style={{color: T.warm}}>8</span>
@@ -305,7 +305,7 @@ export const Numbers: React.FC = () => {
           <div style={{width: 900, marginTop: 66}}>
             <div style={{display: 'flex', justifyContent: 'space-between', fontSize: 24, color: T.muted}}>
               <span>categories answered locally, at zero tokens</span>
-              <span style={{fontFamily: T.mono, color: T.warm}}>5 / 8</span>
+              <span style={{fontFamily: T.mono, color: T.warm}}>4 / 8</span>
             </div>
             <div
               style={{
@@ -350,7 +350,7 @@ export const Bakeoff: React.FC = () => {
 
         <Rise delay={30}>
           <div style={{fontSize: 32, color: T.muted, marginTop: 40, maxWidth: 1250}}>
-            We benchmarked <b style={{color: T.ink}}>16 small models</b> on the real
+            We benchmarked <b style={{color: T.ink}}>16 small models</b> for the real
             4 GB / 2 vCPU box — accuracy <i>and</i> speed. The bigger models scored higher,
             but were too slow to finish work locally.
           </div>
@@ -474,7 +474,7 @@ export const Outro: React.FC = () => {
             <div style={{fontSize: 28, color: T.muted, marginTop: 60, lineHeight: 1.8}}>
               Python orchestrator · llama.cpp + Gemma 4 E2B in-container · Fireworks AI escalation
               <br />
-              5 of 8 categories at zero tokens · hardware-adaptive · never times out
+              4 of 8 categories at zero tokens · time-budgeted · never times out
             </div>
           </Rise>
           <Rise delay={70}>

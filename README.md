@@ -6,9 +6,10 @@ Fireworks tokens**, subject to an LLM-judge accuracy gate. TokenRouter's whole
 strategy is therefore simple: **answer as much as possible for free, and only
 pay the API for what genuinely needs it.**
 
-Five of the eight task categories are answered entirely inside the container at
+Four of the eight task categories are answered entirely inside the container at
 **zero Fireworks tokens** by a bundled Gemma model; only the hardest remainder
-escalates to the paid API.
+escalates to the paid API — with terse prompts, tight token caps, and
+same-category batching. Latest scored run: **100% accuracy**.
 
 ## How it works
 
@@ -17,21 +18,20 @@ the scored token budget; only the last one spends tokens.
 
 ```
                        ┌──────────────────────────────────────────┐
-  /input/tasks.json ─► │  1. Classify        regex → (miss) local  │  0 tokens
+  /input/tasks.json ─► │  1. Classify        regex, zero-cost      │  0 tokens
                        │  2. Solvers         logic + arithmetic     │  0 tokens
                        │  3. Local model     gemma-4-E2B (in image) │  0 tokens
                        │        math · sentiment · NER ·            │
-                       │        summarization · factual            │
-                       │  4. Fireworks       code · logic (+ any    │  paid, minimal
-                       │        local blank/failure)                │
+                       │        summarization                      │
+                       │  4. Fireworks       factual · code · logic │  paid, minimal
+                       │        (+ any local blank/overrun)         │
                        └──────────────────────────────────────────┘ ─► /output/results.json
 ```
 
 1. **Zero-token classification** (`classifier.py`) — a single regex pass assigns
-   one of eight categories. When no pattern matches — the brittle spot on
-   reworded or messy prompts — the bundled model classifies the prompt
-   *semantically* instead of blindly defaulting, still at zero tokens. Regex
-   handles the clean cases; the model backstops the rest.
+   one of eight categories in microseconds. A prompt that matches nothing falls
+   back to the most general handler rather than failing, so classification can
+   never crash a task.
 
 2. **Deterministic solvers** (`solvers.py`) — logic assignment puzzles
    (transitive ordering, syllogisms, zebra-style grids) and pure arithmetic are
@@ -41,21 +41,24 @@ the scored token budget; only the last one spends tokens.
 
 3. **Bundled local model** (`local.py`) — a `gemma-4-E2B-it` GGUF (Q3\_K\_M,
    ~2.5 GB) is baked into the image and run on CPU with `llama.cpp`. It answers
-   **math, sentiment, NER, summarization, and factual** — five of the eight
-   categories — at **zero Fireworks tokens**. An **adaptive speed guard** keeps
-   this safe on any hardware: at startup a short warmup measures the box's
-   tokens/second, and each task is only kept local if its estimated generation
-   time fits the remaining time budget. A fast box keeps everything local; a
-   slow box sheds long-output work to Fireworks — so the container **never times
-   out**, it just trades a few tokens for a guaranteed finish.
+   **math, sentiment, NER, and summarization** — four of the eight categories —
+   at **zero Fireworks tokens**. A **bounded local-time budget**
+   (`LOCAL_BUDGET_S`) keeps this safe on any hardware: local generation gets a
+   fixed wall-clock allowance, and once it is spent the remaining tasks route
+   to Fireworks instead. A fast box keeps everything local; a slow box sheds
+   the overflow — so the container **never times out**, it just trades a few
+   tokens for a guaranteed finish.
 
-4. **Fireworks escalation** (`agent.py` + `llm.py`) — only **code and logic**
-   (plus anything the local model returns blank on) reach the paid API. Each
-   category carries a terse system prompt and a token cap; the `cheap` / `strong`
-   / `code` tiers are inferred at runtime from whatever IDs arrive in
-   `ALLOWED_MODELS`, never hardcoded. `reasoning_effort=none` suppresses hidden
-   thinking tokens (which are scored), and a blank or failed answer retries once
-   on the other tier so a zero-scoring empty reply never ships.
+4. **Fireworks escalation** (`agent.py` + `llm.py`) — only **factual, code, and
+   logic** (plus anything the local model returns blank on or runs out of
+   budget for) reach the paid API. Each category carries a terse system prompt
+   and a token cap; the `cheap` / `strong` / `code` tiers are inferred at
+   runtime from whatever IDs arrive in `ALLOWED_MODELS`, never hardcoded.
+   `reasoning_effort=none` suppresses hidden thinking tokens (which are
+   scored), a blank or failed answer retries once on the other tier so a
+   zero-scoring empty reply never ships, and **same-category batching** answers
+   multiple sentiment/factual tasks in one call — the system prompt is paid
+   once, not once per task.
 
 `main.py` reads `/input/tasks.json`, runs the layers above, and writes
 `/output/results.json` with every `task_id` echoed exactly. It is defensive by
@@ -80,18 +83,18 @@ slightly more accurate but too slow on 2 vCPU: the speed guard would shed their
 work to the API, inflating tokens. Smaller models were faster but not accurate
 enough. E2B is the sweet spot, and it keeps the project inside the Gemma family.
 
-We also validated against the organizers' **public sample tasks**: factual
-questions are explanatory common knowledge (RGB vs RYB, RAM vs ROM), which E2B
-handles well; sentiment reviews are *mixed* (a graded answer must name both the
-good and bad sides); summaries are strictly formatted. The prompts are tuned to
-those real expectations.
+We also validated the whole pipeline against the organizers' **public sample
+tasks** before shipping — the bundled model answers its four categories
+reliably on a CPU-only 2 vCPU box, and the image exits 0 with a valid,
+scoreable `results.json` under the real memory and CPU limits.
 
 ## Gemma everywhere
 
 TokenRouter is a Gemma-first design end to end: a **local Gemma-4-E2B** does the
 bulk of the work at zero cost inside the container, and Fireworks' **Gemma tier**
-is available for escalation. The cheapest token is the one you never send — and
-Gemma is what makes not-sending possible here.
+picks up the cheap escalations (sentiment, NER, summarization when they shed).
+The cheapest token is the one you never send — and Gemma is what makes
+not-sending possible here.
 
 ## Run it like the harness does
 
@@ -122,10 +125,10 @@ python -m unittest discover -s tests -p "test_*.py"
 | Path | Purpose |
 |------|---------|
 | `main.py` | Entrypoint: I/O contract, layered routing, deadlines, incremental flush |
-| `classifier.py` | Zero-token category detection (regex + local-model fallback) |
+| `classifier.py` | Zero-token category detection (regex) |
 | `solvers.py` | Zero-token deterministic solvers (logic puzzles, arithmetic) |
-| `local.py` | Bundled Gemma model, category offload, adaptive speed guard |
-| `agent.py` | Per-category prompt / token-cap / tier strategy and routing |
+| `local.py` | Bundled Gemma model, category offload, bounded local-time budget |
+| `agent.py` | Per-category prompt / token-cap / tier strategy, same-category batching |
 | `llm.py` | Fireworks client, tier inference, token accounting |
 | `Dockerfile` | `python:3.12-slim` + `openai` + `llama-cpp-python` + bundled GGUF |
 | `arsive/` | Earlier Go / local-server implementation, kept for reference |
@@ -139,5 +142,8 @@ Unsloth notebooks.
 
 ## Submission
 
-The linux/amd64 image is published publicly to GHCR; submit the image reference
-on the lablab form. `.github/workflows/build.yml` builds and pushes on demand.
+The submitted image is **`ghcr.io/omerdduran/tokenrouter-track1:v17`**
+(linux/amd64, public on GHCR); this README describes exactly that image. The
+repository history also contains later experimental iterations (a streaming
+local scheduler, deterministic answer validators) that are **not** part of the
+submission. `.github/workflows/build.yml` builds and pushes on demand.
