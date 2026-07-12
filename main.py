@@ -154,58 +154,82 @@ def run(tasks: list[dict]) -> list[dict]:
         _flush()
         return _results
 
-    # Batch mode: route every task first. Solver/local answers land now;
-    # Fireworks tasks are bucketed by (system, max_tokens, tier) so a batch
-    # shares one system prompt.
-    #
-    # Local inference is serialized (llama lock) and runs inline here, so a
-    # slow bundled model could eat the whole runtime. Two guards bound it:
-    #   1. A time BUDGET reserved per task from measured tok/s (local.try_reserve):
-    #      the box only commits to local work it can finish; long-output tasks on
-    #      a slow box shed to Fireworks up front.
-    #   2. A wall-clock backstop below, in case the estimate under-reads.
-    # Either way the run finishes (no TIMEOUT), trading a few tokens for safety.
-    local_budget = float(os.environ.get("LOCAL_BUDGET_S", "240"))
-    local.set_budget(local_budget)
-    # Never let local work run past a point that leaves no room for the
-    # Fireworks pool before the global ceiling (reserve ~40% for remote).
-    local_deadline = min(time.monotonic() + local_budget,
-                         _START + 0.6 * GLOBAL_DEADLINE_S)
-    buckets: dict[tuple, list[tuple[int, str]]] = {}
-    individual: list[tuple] = []
+    # Batch mode. The bottleneck this removes: llama.cpp is single-locked, so
+    # local inference is SERIAL, while the Fireworks pool is PARALLEL. Running
+    # local first and the pool second sums their wall-clock; doing too much
+    # locally then overran the deadline and left tasks blank. Instead we run the
+    # two streams CONCURRENTLY so they overlap (wall-clock = max, not sum):
+    #   Phase 1 — classify + free solvers only (no local inference, no API yet),
+    #             splitting the rest into local-eligible and remote.
+    #   Phase 2 — submit remote work to the pool, then walk the local jobs on
+    #             this thread WHILE the pool runs. A local job that would miss the
+    #             deadline, or returns blank, sheds to the pool — a few tokens,
+    #             but never a blank answer.
+    local_jobs: list[tuple] = []   # (i, task, system, prompt, max_tokens, tier)
+    remote_jobs: list[tuple] = []  # (i, task, spec)
     for i, t in enumerate(tasks):
         prompt = t.get("prompt", "")
-        allow_local = time.monotonic() < local_deadline
         try:
-            r = agent.route(prompt, allow_local=allow_local)
+            r = agent.route(prompt, allow_local=False)  # solver may answer; local skipped
         except Exception:
-            individual.append((i, t, None))
+            remote_jobs.append((i, t, None))
             continue
-        if r[0] == "done":
+        if r[0] == "done":            # a deterministic solver answered
             _store(i, t, r[1])
-            _flush()  # local answers are slow; persist each so a kill keeps them
             continue
         _, category, system, max_tokens, tier = r
-        if agent.batchable(category):
-            buckets.setdefault((system, max_tokens, tier), []).append((i, prompt))
+        if local.available_for(category.value):
+            local_jobs.append((i, t, system, prompt, max_tokens, tier))
         else:
-            individual.append((i, t, (system, max_tokens, tier)))
+            remote_jobs.append((i, t, (system, max_tokens, tier)))
     _flush()
 
-    for (system, max_tokens, tier), items in buckets.items():
-        if len(items) == 1:
-            i, _ = items[0]
-            individual.append((i, tasks[i], (system, max_tokens, tier)))
-            continue
-        answers = agent.answer_batch(system, max_tokens, tier, [p for _, p in items])
-        if answers is None:  # parse failure → fall the group back to per-task
-            individual.extend((i, tasks[i], (system, max_tokens, tier)) for i, _ in items)
-        else:
-            for (i, _), ans in zip(items, answers):
-                _store(i, tasks[i], ans)
-            _flush()
+    pool = ThreadPoolExecutor(max_workers=MAX_WORKERS)
+    futures: dict = {}
+    fut_lock = threading.Lock()
 
-    _run_pool(individual)
+    def _submit(idx: int, task: dict, spec) -> None:
+        fut = pool.submit(_answer_remote, task, idx, spec)
+        with fut_lock:
+            futures[fut] = idx
+
+    for i, t, spec in remote_jobs:
+        _submit(i, t, spec)
+
+    # Local worker on this thread, overlapping the pool. Stop taking local work a
+    # little before the global ceiling so shed jobs still get pool time.
+    local_cutoff = _global_deadline() - 45.0
+    for (i, t, system, prompt, max_tokens, tier) in local_jobs:
+        if time.monotonic() > local_cutoff:
+            _submit(i, t, (system, max_tokens, tier))    # out of time → Fireworks
+            continue
+        try:
+            ans = local.complete(system, prompt, max_tokens)
+        except Exception:
+            ans = ""
+        if ans:
+            _store(i, t, ans)
+            _flush()
+        else:
+            _submit(i, t, (system, max_tokens, tier))    # blank → Fireworks
+
+    # Drain the pool, bounded by the global ceiling.
+    deadline = _global_deadline()
+    with fut_lock:
+        pending = dict(futures)
+    try:
+        for fut in as_completed(pending, timeout=max(1.0, deadline - time.monotonic())):
+            with _results_lock:
+                try:
+                    _results[pending[fut]] = fut.result()
+                except Exception:
+                    pass
+            _flush()
+            if time.monotonic() > deadline:
+                break
+    except Exception:
+        pass
+    pool.shutdown(wait=False, cancel_futures=True)
     _flush()
     return _results
 

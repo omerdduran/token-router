@@ -61,7 +61,6 @@ def start() -> None:
             verbose=False,
         )
         print(f"local: model loaded ({path}); categories={sorted(_CATEGORIES)}", file=sys.stderr)
-        _measure_speed()
     except Exception as exc:  # any load failure → Fireworks-only
         print(f"local: load failed ({exc}) — Fireworks-only", file=sys.stderr)
         _llm = None
