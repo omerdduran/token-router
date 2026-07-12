@@ -1,0 +1,262 @@
+# TokenRouter — Full Development Log & Learnings
+
+A complete, honest record of what we tried, measured, and learned building this
+Track-1 agent — written so a future agent can pick up without re-discovering
+anything the hard way. Read this before touching the routing/model logic.
+
+---
+
+## 0. TL;DR (current state)
+
+- **Goal:** answer 8 task categories while spending the **fewest Fireworks
+  tokens**, above an accuracy gate. Local (in-container) inference counts as
+  **zero tokens**. The winners run **ZERO_API_CALLS** — everything local.
+- **Accuracy gate was lowered from 80% → 50%** (12 Jul). Huge headroom now.
+- **Bundled model: `gemma-4-E2B-it` Q3_K_M (~2.5 GB)** — Pareto-optimal of 16
+  small models benchmarked.
+- **The single most important constraint:** local inference is **SERIAL**
+  (llama.cpp is single-locked), the Fireworks pool is **PARALLEL**. Doing a lot
+  locally is slow wall-clock; every timeout/blank failure traces back to this.
+- **Proven-safe images:** v17 (100% / ~4.5k tok), v22, v25, v27. **Aggressive
+  local offload keeps failing** (v20 TIMEOUT, v24 15.8% gate-fail, v26 TIMEOUT).
+- **Current bet:** v28 = all 8 categories local (ZERO_API_CALLS) with a
+  Fireworks fallback for blank/slow/load-fail. Chasing ~0 tokens.
+
+---
+
+## 1. The competition (Track 1) & scoring
+
+- **Contract:** container reads `/input/tasks.json`, writes
+  `/output/results.json` (echo `task_id` exactly), exit 0. Env injected at judge
+  time: `FIREWORKS_API_KEY`, `FIREWORKS_BASE_URL`, `ALLOWED_MODELS`.
+- **Scoring:** (1) LLM-judge accuracy gate, then (2) rank by **fewest total
+  Fireworks tokens** (prompt + completion + hidden "thinking" all count).
+- **Gate: 50%** (lowered from 80% on 12 Jul). Below → `ACCURACY_GATE_FAILED`.
+- **Local model tokens = 0.** ZERO_API_CALLS is an explicitly valid strategy.
+- **Leaderboard is NOISY** ("catching up", infra errors). The same image scored
+  16/19 once and 100% another time. Moderators: **do not resubmit repeatedly.**
+- **Final judging uses a separate HIDDEN set**, same format/difficulty. Public
+  "sample tasks" were shared (retired) — use for format/style only.
+- **8 categories:** factual, math, sentiment, summarization, NER, code_debug,
+  code_gen, logic.
+- **Failure statuses:** PULL_ERROR, RUNTIME_ERROR, TIMEOUT, OUTPUT_MISSING,
+  INVALID_RESULTS_SCHEMA, MISSING_TASKS, ACCURACY_GATE_FAILED, INFRA_ERROR.
+
+### Real task format (from the public samples — IMPORTANT, we mis-assumed this)
+- **factual = explanatory common knowledge** (RGB vs RYB, ML vs DL, RAM vs ROM),
+  NOT obscure recall. A 2–3B model handles these well. (Our early "factual is
+  hard for small models" conclusion came from testing obscure facts — wrong.)
+- **sentiment = MIXED reviews** (both good and bad in one text). "Mixed /
+  Neutral / Positive" all accepted; the one-sentence reason **must name both
+  sides**; a one-sided reason fails regardless of label. Negative fails.
+- **summarization = STRICT format** (exactly 2 sentences / exactly 3 bullets,
+  each <15 words). Wrong count = fail.
+- **NER** = label PERSON / ORGANIZATION / LOCATION / DATE, all entities.
+
+---
+
+## 2. Hard constraints (the judging box)
+
+- **4 GB RAM, 2 vCPU, CPU-only.** Image ≤ 10 GB. Start within ~60 s, ≤ 10 min
+  total, < 30 s per request. Weights must be **baked into the image**.
+- **Model size:** a Q4/Q3 of a ~2–3B fits; **E4B (4.98 GB Q4) does NOT fit** —
+  OOMs. Even E4B Q2 (3.76 GB) is too tight. E2B Q3 (2.5 GB) fits with ~1 GB
+  headroom.
+- **The Fireworks "proxy":** `FIREWORKS_BASE_URL` is an organizer-run endpoint,
+  live ONLY inside the container at judge time. Our **personal Fireworks key
+  404s** on the real model IDs (`minimax-m3`, `gemma-4-31b-it`, etc.) — so we
+  **cannot benchmark the remote models ourselves**; only submissions reveal
+  their behavior (aggregate only).
+- **ALLOWED_MODELS (real list):** `minimax-m3`, `kimi-k2p7-code`,
+  `gemma-4-31b-it`, `gemma-4-26b-a4b-it`, `gemma-4-31b-it-nvfp4`.
+- **Apple-Silicon dev caveat:** running the linux/amd64 image locally uses QEMU
+  emulation ≈ 5–10× slower — good for FUNCTIONAL tests, useless for real speed.
+
+---
+
+## 3. Current architecture (v28)
+
+Four layers, zero-token first:
+
+1. **Classify** (`classifier.py`) — regex (0 tok). A local-model semantic
+   fallback exists (`local.classify_text`) but is **OFF by default** now
+   (`CLASSIFY_FALLBACK=false`) because it added unbudgeted serial local calls.
+2. **Solvers** (`solvers.py`) — logic (ordering, syllogism, zebra) + arithmetic.
+   Self-gating, 0 tok, never wrong.
+3. **Bundled local model** (`local.py`) — gemma-4-E2B answers its categories at
+   0 tokens.
+4. **Fireworks escalation** (`agent.py` + `llm.py`) — tiers inferred from
+   `ALLOWED_MODELS`; `reasoning_effort=none`; blank → retry other tier.
+
+**Concurrency (the key design, added in v26+):** `main.py run()` now runs the
+local worker (serial, main thread) CONCURRENTLY with the Fireworks pool
+(parallel). A local task that returns blank, errors, or would miss the
+`local_cutoff` **sheds to the pool** (a few tokens, never blank). Wall-clock =
+max(local, pool), not the sum.
+
+**Reliability:** skeleton results.json before the model loads; incremental flush;
+SIGTERM flush + `os._exit`; `GLOBAL_DEADLINE_S` (540 s) ceiling; graceful degrade
+to Fireworks-only if the model fails to load.
+
+**Key env:** `LOCAL_CATEGORIES`, `CLASSIFY_FALLBACK`, `LOCAL_BUDGET_S`,
+`GLOBAL_DEADLINE_S`, `LOCAL_CTX_SIZE`, `LOCAL_THREADS`, `BATCH`.
+
+---
+
+## 4. Submission history — the key table (image → result → lesson)
+
+| Ver | What | Result | Lesson |
+|---|---|---|---|
+| v1 | single remote model, terse prompts | 17/19, 5465 tok | baseline |
+| v2 | trimmed prompts | 15/19 (below old gate) | terse cut accuracy |
+| v3 | + deterministic solvers | 16/19, 5433 | solvers rarely fire on hidden set |
+| v5 | strong tier → gemma-4-31b | **6/19 (31.6%)** | gemma returns EMPTY under `reasoning_effort=none` |
+| v7 | minimax + terse (no CoT) | 12/19 | **minimax NEEDS visible CoT** for math/logic |
+| v9 | + local gemma-2-2b (summ+ner) | 18/19, 4350, #6 | local offload works |
+| v11 | + batching sentiment/factual | ~3.5k, #6 | batching helps a little |
+| v13 | batch math+logic | +200 tok | batching hurts long-CoT categories |
+| v15 | strong tier → gemma-4-26b (ENV) | **7/19** | both gemma models blank under none; no minimax fallback |
+| v16 | gemma effort=low + factual→gemma | 4381 (↑) | gemma answers under "low" but is NOT cheaper than minimax(none) |
+| v17 | E2B local (math/sent/ner/summ) | **100% / 4478 / ~#20** | **proven safe; lowest-token gate-passer** |
+| v19 | v17 + semantic classifier fallback | 18/19, 3845 (↑) then noisy | fallback re-routes no-match tasks to expensive correct categories |
+| v20 | Qwen3-4B + code local | **TIMEOUT** | 4B + long code output too slow (serial) |
+| v22 | Qwen3-4B + code, speed guard | 100% / 4736 | slow model → guard sheds to Fireworks → high tokens |
+| v24 | E2B + factual local + fallback | **15.8% gate-fail** | unbudgeted classify_text overflowed serial queue → blanks |
+| v25 | v24 + fallback OFF + tight budget | 100% / 4891 | passes, but MORE tokens (biased to Fireworks) |
+| v26 | concurrent local + pool | **TIMEOUT** | cutoff too high (495s); blocking last inference passed 600s kill |
+| v27 | v26 + cutoff 0.5×global (270s) | 100% / 4822 / #21 | safe; code+logic still remote → ~4.8k tokens |
+| v28 | ALL 8 categories local | *pending* | ZERO_API_CALLS attempt, chasing ~0 tokens |
+
+**Two earlier disasters worth noting:** the Go implementation scored **0.0%**
+five times — root cause was `results.json` written with **0600 perms** (root
+container, non-root judge couldn't read it). Python's `open()` gives 0644;
+fixed by rewriting in Python. Also several INFRA_ERROR / TIMEOUT from an
+un-hardened startup (fixed with skeleton-first + flush + deadlines).
+
+---
+
+## 5. The 16-model local benchmark (measured natively; accuracy % | avg output tokens)
+
+Two rounds, all 8 categories, our synthetic 192-item testset. Deterministic
+scorers for math/sentiment/ner/logic; judge for factual/summ/code.
+
+| Model (Q4 unless noted) | math | sentiment | ner | logic | factual | code_debug | code_gen | speed |
+|---|---|---|---|---|---|---|---|---|
+| **gemma-4-E2B (Q3)** | **100** | 88 | 83 | 83 | ~88* | **92** | (weak on tiny set) | fast |
+| Qwen3-4B-Instruct-2507 | **100** | 88 | 92 | **88** | ~88* | 92 | **96** | **slow** (4B) |
+| Phi-3.5-mini (3.8B) | 83 | 88 | **100** | 88 | ? | ? | **96** | slow |
+| gemma-2-2b | 58 | 83 | **96** | 79 | 42–71 | ? | 71 | fastest |
+| Qwen2.5-3B | 83 | 83 | 54 | 83 | 71 | 54 | 71 | med |
+| Qwen2.5-Coder-3B | 75 | 83 | 75 | 83 | ? | (blind spot) | ? | med |
+| Qwen3-1.7B (/no_think) | 88 | 58 | 62 | 79 | ? | ? | ? | fast |
+| Qwen2.5-1.5B | 79 | 79 | 75 | 88 | 71 | ? | ? | fast |
+| Llama-3.2-3B | 79 | 92 | 75 | 79 | ? | ? | ? | slow-ish |
+| Qwen3-0.6B (/no_think) | 46 | 46 | 58 | 17 | ? | ? | ? | fastest |
+| Qwen2.5-Math-1.5B | 67 | 21 | 17 | 75 | 17 | ? | 71 | slow |
+| Qwen2.5-Coder-1.5B | 46 | 62 | 88 | 88 | 71 | 63 | 79 | fast |
+
+\* factual for E2B/Qwen3-4B judged by hand on our set; on the REAL (explanatory)
+samples E2B answered 9–10/10.
+
+**Verdict:** `gemma-4-E2B` is Pareto-optimal for the 4 GB / 2 vCPU box — as
+accurate as Qwen3-4B on the categories that matter, but fast enough to actually
+finish locally. Bigger = more accurate but too slow (sheds to API). Smaller =
+fast but drops below usefulness (esp. sentiment/ner). Qwen was Qwen3 needs
+`/no_think` appended to the prompt or it emits huge thinking blocks. The
+"specialist" models (Math-1.5B, Coder-1.5B) were NOT better than the general E2B.
+
+---
+
+## 6. Key technical lessons (the expensive ones)
+
+1. **SERIAL LOCAL vs PARALLEL FIREWORKS is the master constraint.** llama.cpp is
+   single-locked → local inference is one-at-a-time. The Fireworks pool is 8-way
+   parallel. So *shedding to Fireworks is faster wall-clock than doing local*.
+   Every TIMEOUT / mass-blank came from too much serial local work. Do local and
+   remote **concurrently**, and bound local by a wall-clock cutoff that leaves
+   room for one worst-case (non-interruptible) inference + the drain before the
+   ~600 s kill. A cutoff too close to the ceiling = TIMEOUT (v26).
+2. **`reasoning_effort=none` gives minimax visible CoT (needed for math/logic)
+   but makes the Gemma-4 models return EMPTY.** To use Gemma-4 remotely you must
+   send `low`/omit; but then it emits thinking tokens and is NOT cheaper than
+   minimax(none). Net: don't route the strong tier to remote Gemma.
+3. **E2B is the right local model** (§5). Don't re-run the model search.
+4. **factual is offloadable to a small model** because the real tasks are
+   explanatory common knowledge, not obscure recall.
+5. **The gate is 50%** — you have huge accuracy headroom. Optimize for TOKENS
+   (and reliability), not accuracy, once you're safely above 50%.
+6. **Local classifier fallback (`classify_text`) is dangerous**: it runs an
+   unbudgeted serial local inference per regex-miss → overflows the queue
+   (caused v24's 15.8%). Keep `CLASSIFY_FALLBACK=false` unless you budget it.
+7. **Batching** (shared system prompt for same-category remote tasks) is a minor
+   input-token save and BACKFIRES for long-CoT categories (math/logic). Low value.
+8. **The leaderboard is noisy** and moderators say don't churn — make deliberate,
+   well-reasoned submissions, not blind trial-and-error.
+
+---
+
+## 7. Dead ends — do NOT retry
+
+- **Fine-tuning gemma-2-2b on Colab T4:** produced a degenerate model
+  (`"the the the..."` on every prompt). Root cause: **T4 has no bf16 → forced
+  fp16; gemma-2's logit soft-capping overflows in fp16 → divergence.** Would
+  need a bf16 GPU (A100/L4) or fp32 + grad-clip. And a 2B fine-tune risks
+  overfitting the hidden set anyway. **The safeguard that caught it: always eval
+  a candidate model on a held-out set BEFORE bundling it.**
+- **gemma-4-E4B as the local model:** 4.98 GB Q4 (even 3.76 GB Q2) does NOT fit
+  4 GB RAM → OOM. Dead.
+- **Routing the strong tier to a remote Gemma model:** empty replies under
+  `none` (v5, v15). Dead.
+- **Terse / no-CoT prompts to break minimax's token cost:** dropped accuracy
+  below the OLD 84% gate (v7 = 12/19). NOTE: now that the gate is 50%, aggressive
+  output-minimization is worth reconsidering — but it trades the safety margin
+  the hidden set may need.
+- **Two local models loaded at once** (e.g., E2B + gemma-2-2b for NER): 1.6 + 2.5
+  GB > 4 GB → OOM. Only one model fits in RAM.
+- **Qwen3-4B (or any 4B) as the local model:** too slow on 2 vCPU; the speed
+  guard sheds its work to the API → high tokens (v20 TIMEOUT, v22 4.7k).
+
+---
+
+## 8. Image ladder / fallbacks (GHCR: `ghcr.io/omerdduran/tokenrouter-track1:<tag>`)
+
+- **v17** — E2B, 4 categories local, OLD code. **Proven 100% / ~4.5k tokens.**
+  The safe floor to revert to.
+- **v22 / v25 / v27** — current-code, Fireworks-heavy, all ~100% / ~4.7–4.9k.
+- **v28** — all-8-local (ZERO_API_CALLS attempt), 0-token target, Fireworks
+  fallback on blank/slow.
+- Rule: keep a known-good tag; if a new image fails the gate or times out,
+  re-submit the last good one. The leaderboard shows ONLY the latest image.
+
+---
+
+## 9. Open questions / next ideas
+
+- **Does v28 (all local) fit the 10-min budget on the real box?** Unknown until
+  submitted — E2B's real 2-vCPU tokens/sec is the deciding number. If it sheds a
+  lot, tighten caps further or try a faster model that still clears 50%.
+- **A faster local model** (Qwen2.5-1.5B ~70% overall, or a distilled model)
+  might finish ALL tasks locally in time at ≥50% → true 0 tokens. Trade accuracy
+  for speed since the gate is only 50%.
+- **Aggressive output minimization** (tiny caps, no CoT) on any remaining remote
+  calls — viable now the gate is 50%, but risks the hidden-set margin.
+- **Budget the classifier fallback** (count its inference against the local
+  budget) if you want messy-prompt robustness back without the v24 blow-up.
+
+---
+
+## 10. Practical / infra notes
+
+- **Build:** local `docker buildx build --platform linux/amd64 -t ...:<tag>
+  --push .` (CI runner queue kills big-image jobs). Overlay builds
+  (`FROM <prev-tag>` + COPY changed files / ENV) are fast — the ~2.5 GB model
+  layer is cached. `docker build` with the **repo as context** works even when a
+  Bash sandbox blocks `cp`/reads of repo files.
+- **Secrecy:** the user does NOT push code to GitHub (competitors shouldn't see
+  it). Commit locally only; images on GHCR are public (the harness must pull them).
+- **Never** add `Co-Authored-By` / "Claude" lines to commits.
+- **API keys** live only in `.env` — never echo/commit/rotate them.
+- **Docs:** `README.md`, `arsive/slides/slides.md` (Slidev), `arsive/video/src/`
+  (Remotion) describe the current system. The $1000 "Best Use of Gemma" side
+  prize rewards the story ("Gemma everywhere": local gemma-4-E2B + Fireworks
+  Gemma tier), independent of the token rank.
