@@ -134,6 +134,7 @@ to Fireworks-only if the model fails to load.
 | v27 | v26 + cutoff 0.5×global (270s) | 100% / 4822 / #21 | safe; code+logic still remote → ~4.8k tokens |
 | v28 | ALL 8 categories local, cutoff 0.65 | **94.7% / 4431** | cutoff at 351s (incl. load) → only ~half finished locally; gain vs v27 ≈ just the cap cuts |
 | v29 | streaming deadline + dynamic pre-shed + sorted queue | *pending* | interruptible generation kills the tail risk → local runs to ~495s |
+| v30 | v29 + epistemic escalation (validate.py, idle self-consistency) | *built, not pushed* | suspect local answers go to the REAL API; token spend ∝ uncertainty |
 
 **Two earlier disasters worth noting:** the Go implementation scored **0.0%**
 five times — root cause was `results.json` written with **0600 perms** (root
@@ -205,6 +206,15 @@ fast but drops below usefulness (esp. sentiment/ner). Qwen was Qwen3 needs
    input-token save and BACKFIRES for long-CoT categories (math/logic). Low value.
 8. **The leaderboard is noisy** and moderators say don't churn — make deliberate,
    well-reasoned submissions, not blind trial-and-error.
+9. **The user's stated goal is REAL-WORLD READY, not just rank** (12 Jul):
+   minimize tokens AND maximize accuracy — anything the local model doesn't
+   know or likely got wrong must escalate to the real Fireworks API. Token
+   spend should be proportional to uncertainty (v30's design). Don't optimize
+   for a pure 0-token gamble at accuracy's expense.
+10. **Logprob-based confidence is dead on this box** — llama-cpp-python
+   requires `logits_all=True` for logprobs, and Gemma's 262k vocab makes that
+   buffer ~2.1GB at n_ctx=2048 → OOM. Use deterministic validators +
+   self-consistency instead (v30).
 
 ---
 
@@ -241,6 +251,20 @@ fast but drops below usefulness (esp. sentiment/ner). Qwen was Qwen3 needs
 - **v29** — all-8-local + streaming deadline (interruptible local generation),
   measured-speed pre-shed, cheapest-first sorted queue. 0-token target,
   Fireworks fallback on blank/won't-fit.
+- **v30** — v29 + EPISTEMIC escalation ("real-world ready" direction, user's
+  explicit goal): `validate.py` deterministic per-category answer validators
+  (Answer-line for math/logic, sentence/bullet/word-count for summarization,
+  label-line + grounding for NER, fence + ast.parse for code, label for
+  sentiment, hedging for all), truncated-at-deadline answers escalate instead
+  of being stored, and leftover local time runs a self-consistency second pass
+  (different wording, temp 0) whose confident disagreement escalates. Suspect
+  answers are stored first (partial beats blank if the escalation dies), and a
+  drain guard stops blank remote results from overwriting them. Rollback
+  knobs: `VALIDATE=false`, `VERIFY_IDLE=false`. NOTE: logprob confidence is
+  IMPOSSIBLE here — llama-cpp-python needs `logits_all=True`, which allocates
+  n_ctx×vocab×4B ≈ 2.1GB for Gemma's 262k vocab → OOM on the 4GB box.
+  QEMU smoke: 7/7 local, 0 rejects (no false-fires on real answers),
+  verify 4 checked / 0 mismatch, 0 tokens, exit 0.
 - Rule: keep a known-good tag; if a new image fails the gate or times out,
   re-submit the last good one. The leaderboard shows ONLY the latest image.
 

@@ -12,6 +12,17 @@ import os
 import sys
 import threading
 import time
+from typing import NamedTuple
+
+
+class LocalOut(NamedTuple):
+    """One local completion. text='' means blank. truncated=True ONLY when the
+    hard-deadline break cut the stream — hitting max_tokens is normal output,
+    the caps are tuned for it. PITFALL: a NamedTuple is always truthy; callers
+    must branch on out.text, never on out itself."""
+    text: str
+    truncated: bool
+
 
 _llm = None
 # llama.cpp is not thread-safe; the worker pool must serialize access to it.
@@ -123,23 +134,23 @@ def available_for(category: str) -> bool:
 
 
 def complete(system: str, prompt: str, max_tokens: int,
-             deadline: float | None = None) -> str:
+             deadline: float | None = None) -> LocalOut:
     """One local completion. gemma has no system role, so the instruction is
     folded into the user turn. Serialized: llama.cpp is not thread-safe.
 
     Streams token by token so generation is INTERRUPTIBLE: past `deadline`
-    (absolute time.monotonic()) it stops and returns the partial text. This is
-    what lets the caller run local work close to the harness kill — a task
-    started late gets truncated instead of blocking past the deadline (the v26
-    TIMEOUT failure mode). Only the prefill of one prompt remains
-    non-interruptible. Returns '' on empty output (caller falls back to
-    Fireworks). Also updates the measured decode/prefill speeds from every
-    call, so est_seconds() tracks the real box, not just the warmup."""
+    (absolute time.monotonic()) it stops and returns the partial text with
+    truncated=True — the caller escalates it instead of trusting a cut-off
+    answer. This is what lets local work run close to the harness kill (the
+    v26 TIMEOUT failure mode); only the prefill of one prompt remains
+    non-interruptible. Also updates the measured decode/prefill speeds from
+    every call, so est_seconds() tracks the real box, not just the warmup."""
     global _tok_s, _prefill_tok_s
     t0 = time.monotonic()
     t_first = 0.0
     parts: list[str] = []
     n_out = 0
+    cut = False
     with _lock:
         stream = _llm.create_chat_completion(
             messages=[{"role": "user", "content": f"{system}\n\n{prompt}"}],
@@ -158,6 +169,7 @@ def complete(system: str, prompt: str, max_tokens: int,
                     parts.append(piece)
                     n_out += 1
                 if deadline is not None and now > deadline:
+                    cut = True
                     break        # hard stop: a truncated answer beats a TIMEOUT
         finally:
             stream.close()
@@ -171,7 +183,7 @@ def complete(system: str, prompt: str, max_tokens: int,
         if n_out >= 8 and t_end > t_first:
             dec = n_out / (t_end - t_first)
             _tok_s = dec if _tok_s <= 0 else 0.5 * (_tok_s + dec)
-    return "".join(parts).strip()
+    return LocalOut("".join(parts).strip(), cut)
 
 
 _CLASSIFY_LABELS = ("factual", "math", "sentiment", "summarization",

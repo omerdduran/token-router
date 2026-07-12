@@ -11,6 +11,7 @@ import os
 import re
 
 import local
+import validate
 from classifier import Category, classify
 from llm import complete, model_for
 from solvers import solve_logic, solve_math
@@ -104,13 +105,17 @@ def route(prompt: str, allow_local: bool = True):
     system, max_tokens, tier = _CONFIG[category]
     # Non-batch path only: no deadline here, the caller's pool is already
     # deadline-bounded. The batch path in main.py gates on time itself.
+    # A local answer is kept only when the validators accept it — an answer
+    # the model likely got wrong must go to the real API, not be stored.
     if allow_local and local.available_for(category.value):
         try:
-            answer = local.complete(system, prompt, max_tokens)
+            out = local.complete(system, prompt, max_tokens)
         except Exception:
-            answer = ""
-        if answer:
-            return ("done", answer)
+            out = None
+        if out is not None and out.text and not out.truncated and (
+                not validate.ENABLED
+                or not validate.verdict(category.value, prompt, out.text)):
+            return ("done", out.text)
 
     return ("remote", category, system, max_tokens, tier)
 

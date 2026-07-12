@@ -1,0 +1,8 @@
+# Overlay: v30 = v29 weights/deps + epistemic escalation (validators, flag
+# policy, idle self-consistency). The 2.5GB model layer stays cached.
+#   docker buildx build --platform linux/amd64 -f Dockerfile.v30 \
+#     -t ghcr.io/omerdduran/tokenrouter-track1:v30 --push .
+FROM ghcr.io/omerdduran/tokenrouter-track1:v29
+COPY main.py agent.py local.py validate.py ./
+ENV VALIDATE=true \
+    VERIFY_IDLE=true

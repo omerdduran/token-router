@@ -19,6 +19,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import local
 import agent
+import validate
 from agent import solve
 from llm import describe_tiers, usage
 
@@ -37,6 +38,10 @@ GLOBAL_DEADLINE_S = float(os.environ.get("GLOBAL_DEADLINE_S", "540"))
 # that sheds late (blank/truncated local output) still gets one parallel round
 # of Fireworks calls before the drain deadline.
 REMOTE_RESERVE_S = float(os.environ.get("REMOTE_RESERVE_S", "45"))
+# Spend leftover local time re-checking flagged answers (self-consistency);
+# a confident disagreement escalates to Fireworks. VALIDATE (see validate.py)
+# gates the Layer-1 format/refusal checks the same way.
+VERIFY_IDLE = os.environ.get("VERIFY_IDLE", "true").strip().lower() in ("1", "true", "yes")
 _START = time.monotonic()
 
 
@@ -131,10 +136,15 @@ def _run_pool(work: list[tuple]) -> None:
         for fut in as_completed(fut_to_idx, timeout=timeout):
             idx = fut_to_idx[fut]
             try:
-                with _results_lock:
-                    _results[idx] = fut.result()
+                res = fut.result()
             except Exception:
-                pass
+                res = None
+            # Same guard as the batch drain: a blank result never overwrites
+            # a non-blank stored answer.
+            if res is not None:
+                with _results_lock:
+                    if res.get("answer") or not _results[idx].get("answer"):
+                        _results[idx] = res
             _flush()
             if time.monotonic() > deadline:
                 break
@@ -216,7 +226,9 @@ def run(tasks: list[dict]) -> list[dict]:
     # decides up front whether it can still fit; a task that can't sheds
     # immediately so the pool works on it WHILE local inference continues.
     hard_stop = _global_deadline() - REMOTE_RESERVE_S
-    n_local = n_shed_time = n_shed_blank = 0
+    n_local = n_shed_time = n_shed_blank = n_shed_trunc = 0
+    n_rej_invalid = n_rej_hedge = 0
+    verify_q: list[tuple] = []   # (i, task, cat, system, prompt, max_tokens, tier, first_answer)
     for (i, t, cat, system, prompt, max_tokens, tier) in local_jobs:
         now = time.monotonic()
         if now + local.est_seconds(cat, len(prompt)) > hard_stop:
@@ -224,20 +236,72 @@ def run(tasks: list[dict]) -> list[dict]:
             n_shed_time += 1
             continue
         try:
-            ans = local.complete(system, prompt, max_tokens, deadline=hard_stop)
+            out = local.complete(system, prompt, max_tokens, deadline=hard_stop)
         except Exception:
-            ans = ""
-        if ans:   # full or truncated — either way zero tokens, and never blank
-            _store(i, t, ans)
-            _flush()
-            n_local += 1
-        else:
+            out = local.LocalOut("", False)
+        if not out.text:
             _submit(i, t, (system, max_tokens, tier))    # blank → Fireworks
             n_shed_blank += 1
+            continue
+        # Epistemic escalation: an answer the model likely got wrong goes to
+        # the real API. The suspect text is still stored first — a partial
+        # beats a blank if the escalation call itself fails — and the pool's
+        # non-blank result overwrites it (see the drain guard).
+        if out.truncated:
+            _store(i, t, out.text)
+            _flush()
+            _submit(i, t, (system, max_tokens, tier))    # cut mid-answer → Fireworks
+            n_shed_trunc += 1
+            continue
+        reason = validate.verdict(cat, prompt, out.text) if validate.ENABLED else ""
+        if reason:
+            _store(i, t, out.text)
+            _flush()
+            _submit(i, t, (system, max_tokens, tier))    # unusable answer → Fireworks
+            if reason == "hedge":
+                n_rej_hedge += 1
+            else:
+                n_rej_invalid += 1
+            continue
+        _store(i, t, out.text)
+        _flush()
+        n_local += 1
+        if VERIFY_IDLE and validate.flag(cat):
+            verify_q.append((i, t, cat, system, prompt, max_tokens, tier, out.text))
     if local_jobs:
         print(f"local: {n_local}/{len(local_jobs)} answered locally, "
-              f"shed {n_shed_time} (time) + {n_shed_blank} (blank), "
-              f"tok/s={local.tok_s():.1f}", file=sys.stderr)
+              f"shed {n_shed_time} (time) + {n_shed_blank} (blank) + "
+              f"{n_shed_trunc} (truncated), rejected {n_rej_invalid} (invalid) + "
+              f"{n_rej_hedge} (hedge), tok/s={local.tok_s():.1f}", file=sys.stderr)
+
+    # Idle verification: leftover local time (the pool keeps running) buys a
+    # free second opinion on flagged answers — a differently-worded second
+    # pass whose mechanical comparison only escalates on confident
+    # disagreement. Strictly lower priority than answering: it starts only
+    # after every unanswered local job, under the same hard_stop, so the
+    # REMOTE_RESERVE_S window for its escalations is preserved by construction.
+    if VERIFY_IDLE and verify_q:
+        verify_q.sort(key=lambda e: (not validate.soft_doubt(e[7]),
+                                     local.sort_key(e[2], len(e[4]))))
+        n_checked = n_mismatch = n_vskip = 0
+        for (i, t, cat, system, prompt, max_tokens, tier, first) in verify_q:
+            if time.monotonic() + local.est_seconds(cat, len(prompt)) > hard_stop:
+                n_vskip += 1
+                continue   # not break: doubt-first ordering isn't time-monotonic
+            try:
+                out = local.complete(validate.verify_system(cat), prompt,
+                                     validate.verify_max_tokens(cat, max_tokens),
+                                     deadline=hard_stop)
+            except Exception:
+                continue
+            n_checked += 1
+            if out.truncated or not out.text:
+                continue                     # can't judge → the first answer stands
+            if not validate.agree(cat, first, out.text):
+                _submit(i, t, (system, max_tokens, tier))
+                n_mismatch += 1
+        print(f"verify: {n_checked} checked, {n_mismatch} mismatch -> escalated, "
+              f"{n_vskip} skipped (time)", file=sys.stderr)
 
     # Drain the pool, bounded by the global ceiling.
     deadline = _global_deadline()
@@ -245,11 +309,17 @@ def run(tasks: list[dict]) -> list[dict]:
         pending = dict(futures)
     try:
         for fut in as_completed(pending, timeout=max(1.0, deadline - time.monotonic())):
-            with _results_lock:
-                try:
-                    _results[pending[fut]] = fut.result()
-                except Exception:
-                    pass
+            try:
+                res = fut.result()
+            except Exception:
+                res = None
+            # Never let a failed escalation (blank remote answer) overwrite a
+            # stored partial/suspect local answer — partial beats blank.
+            if res is not None:
+                with _results_lock:
+                    idx = pending[fut]
+                    if res.get("answer") or not _results[idx].get("answer"):
+                        _results[idx] = res
             _flush()
             if time.monotonic() > deadline:
                 break

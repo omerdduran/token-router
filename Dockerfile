@@ -33,7 +33,7 @@ RUN pip install --no-cache-dir "openai>=1.30.0" && \
       --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
 
 COPY --from=model /model.gguf /models/model.gguf
-COPY main.py agent.py classifier.py llm.py solvers.py local.py ./
+COPY main.py agent.py classifier.py llm.py solvers.py local.py validate.py ./
 
 # The local model answers all eight categories; any shed escalates to
 # Fireworks. The grading box has 2 vCPU, so llama.cpp runs on 2 threads.
@@ -42,12 +42,17 @@ COPY main.py agent.py classifier.py llm.py solvers.py local.py ./
 # with a hard deadline (interruptible) and runs to within REMOTE_RESERVE_S
 # (default 45s) of the global ceiling; the measured-speed guard in
 # local.py/main.py sheds work that won't fit (no TIMEOUT).
+# VALIDATE gates the deterministic answer validators (format/refusal checks);
+# VERIFY_IDLE gates the idle-time self-consistency pass. Both escalate suspect
+# local answers to Fireworks; both are rollback knobs back to blind-local.
 ENV LOCAL=true \
     LOCAL_MODEL_PATH=/models/model.gguf \
     LOCAL_CATEGORIES=factual,math,sentiment,summarization,ner,code_debug,code_gen,logic \
     LOCAL_CTX_SIZE=2048 \
     LOCAL_THREADS=2 \
-    BATCH=true
+    BATCH=true \
+    VALIDATE=true \
+    VERIFY_IDLE=true
 
 # Harness mounts /input and /output and injects FIREWORKS_* at run time.
 ENTRYPOINT ["python", "main.py"]
