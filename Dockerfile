@@ -1,9 +1,10 @@
 # Judging VM: linux/amd64, 4GB RAM / 2 vCPU, CPU-only, image <= 10GB.
 #   docker buildx build --platform linux/amd64 -t <registry>:<tag> --push .
 #
-# A small GGUF (gemma-4-E2B-it, Q3_K_M, ~2.54GB) is baked in and answers the
-# five categories it handles reliably — math, sentiment, NER, summarization,
-# factual — at zero Fireworks tokens; only code and logic go to Fireworks.
+# A small GGUF (gemma-4-E2B-it, Q3_K_M, ~2.54GB) is baked in and answers ALL
+# eight categories at zero Fireworks tokens (benchmarked well above the 50%
+# accuracy gate on each); Fireworks is only the fallback for tasks that shed
+# (blank output, or won't fit before the streaming hard stop).
 # gemma-4-E2B was picked by benchmarking 16 small models: it is Pareto-optimal
 # for this 4GB/2vCPU/CPU box (fast enough to finish work locally, accurate
 # enough to pass). Q3 fits the 4GB box with ~1GB of headroom. INCLUDE_MODEL=false
@@ -34,18 +35,18 @@ RUN pip install --no-cache-dir "openai>=1.30.0" && \
 COPY --from=model /model.gguf /models/model.gguf
 COPY main.py agent.py classifier.py llm.py solvers.py local.py ./
 
-# The local model answers math, sentiment, NER, summarization, and factual;
-# code and logic escalate to Fireworks. The grading box has 2 vCPU, so llama.cpp
-# runs on 2 threads. n_ctx=2048 keeps the KV cache small enough to stay well
-# inside 4GB RAM alongside the model, the agent, and Fireworks work.
-# LOCAL_BUDGET_S bounds total local generation time; the adaptive speed guard in
-# local.py/main.py sheds work to Fireworks if the box is too slow (no TIMEOUT).
+# The local model answers all eight categories; any shed escalates to
+# Fireworks. The grading box has 2 vCPU, so llama.cpp runs on 2 threads.
+# n_ctx=2048 keeps the KV cache small enough to stay well inside 4GB RAM
+# alongside the model, the agent, and Fireworks work. Local generation streams
+# with a hard deadline (interruptible) and runs to within REMOTE_RESERVE_S
+# (default 45s) of the global ceiling; the measured-speed guard in
+# local.py/main.py sheds work that won't fit (no TIMEOUT).
 ENV LOCAL=true \
     LOCAL_MODEL_PATH=/models/model.gguf \
-    LOCAL_CATEGORIES=math,sentiment,ner,summarization,factual \
+    LOCAL_CATEGORIES=factual,math,sentiment,summarization,ner,code_debug,code_gen,logic \
     LOCAL_CTX_SIZE=2048 \
     LOCAL_THREADS=2 \
-    LOCAL_BUDGET_S=240 \
     BATCH=true
 
 # Harness mounts /input and /output and injects FIREWORKS_* at run time.

@@ -33,6 +33,10 @@ DEADLINE_S = float(os.environ.get("DEADLINE_S", "480"))
 # routing loop and the Fireworks pool are serial, so each must respect this or
 # their budgets could sum past 600s and TIMEOUT.
 GLOBAL_DEADLINE_S = float(os.environ.get("GLOBAL_DEADLINE_S", "540"))
+# Local generation stops this many seconds before GLOBAL_DEADLINE_S, so a task
+# that sheds late (blank/truncated local output) still gets one parallel round
+# of Fireworks calls before the drain deadline.
+REMOTE_RESERVE_S = float(os.environ.get("REMOTE_RESERVE_S", "45"))
 _START = time.monotonic()
 
 
@@ -165,7 +169,7 @@ def run(tasks: list[dict]) -> list[dict]:
     #             this thread WHILE the pool runs. A local job that would miss the
     #             deadline, or returns blank, sheds to the pool — a few tokens,
     #             but never a blank answer.
-    local_jobs: list[tuple] = []   # (i, task, system, prompt, max_tokens, tier)
+    local_jobs: list[tuple] = []   # (i, task, category, system, prompt, max_tokens, tier)
     remote_jobs: list[tuple] = []  # (i, task, spec)
     for i, t in enumerate(tasks):
         prompt = t.get("prompt", "")
@@ -179,9 +183,15 @@ def run(tasks: list[dict]) -> list[dict]:
             continue
         _, category, system, max_tokens, tier = r
         if local.available_for(category.value):
-            local_jobs.append((i, t, system, prompt, max_tokens, tier))
+            local_jobs.append((i, t, category.value, system, prompt, max_tokens, tier))
         else:
             remote_jobs.append((i, t, (system, max_tokens, tier)))
+    # Cheapest-first: short-output categories cost the fewest local seconds per
+    # remote token saved, so under time pressure they all get done and only the
+    # slow ones (math/logic — which the solvers may have caught anyway) shed.
+    # Same-category grouping also lets llama.cpp's prefix cache skip re-eval of
+    # the shared system prompt.
+    local_jobs.sort(key=lambda j: local.sort_key(j[2], len(j[4])))
     _flush()
 
     pool = ThreadPoolExecutor(max_workers=MAX_WORKERS)
@@ -196,27 +206,38 @@ def run(tasks: list[dict]) -> list[dict]:
     for i, t, spec in remote_jobs:
         _submit(i, t, spec)
 
-    # Local worker on this thread, overlapping the pool. local.complete() is a
-    # blocking, non-interruptible C call, so a task started near the cutoff still
-    # runs to completion — the cutoff must leave room for one worst-case local
-    # inference PLUS the pool drain before the harness kill (~600s). With the
-    # per-category caps bounding a single inference to ~2 min, 0.65 of the global
-    # ceiling keeps the last-inference tail safely under the kill while leaving as
-    # much time as possible to answer everything locally (zero API tokens).
-    local_cutoff = _START + 0.65 * GLOBAL_DEADLINE_S
-    for (i, t, system, prompt, max_tokens, tier) in local_jobs:
-        if time.monotonic() > local_cutoff:
-            _submit(i, t, (system, max_tokens, tier))    # out of time → Fireworks
+    # Local worker on this thread, overlapping the pool. Generation streams
+    # token by token (local.complete deadline=), so it is interruptible: a task
+    # still running at hard_stop returns truncated instead of blocking past the
+    # harness kill (the v26 TIMEOUT). That kills the need for the old
+    # conservative 0.65 cutoff — local work runs to within REMOTE_RESERVE_S of
+    # the global ceiling, and the reserve gives late sheds one parallel round
+    # of Fireworks calls. Before each task, its measured-speed time estimate
+    # decides up front whether it can still fit; a task that can't sheds
+    # immediately so the pool works on it WHILE local inference continues.
+    hard_stop = _global_deadline() - REMOTE_RESERVE_S
+    n_local = n_shed_time = n_shed_blank = 0
+    for (i, t, cat, system, prompt, max_tokens, tier) in local_jobs:
+        now = time.monotonic()
+        if now + local.est_seconds(cat, len(prompt)) > hard_stop:
+            _submit(i, t, (system, max_tokens, tier))    # won't fit → Fireworks
+            n_shed_time += 1
             continue
         try:
-            ans = local.complete(system, prompt, max_tokens)
+            ans = local.complete(system, prompt, max_tokens, deadline=hard_stop)
         except Exception:
             ans = ""
-        if ans:
+        if ans:   # full or truncated — either way zero tokens, and never blank
             _store(i, t, ans)
             _flush()
+            n_local += 1
         else:
             _submit(i, t, (system, max_tokens, tier))    # blank → Fireworks
+            n_shed_blank += 1
+    if local_jobs:
+        print(f"local: {n_local}/{len(local_jobs)} answered locally, "
+              f"shed {n_shed_time} (time) + {n_shed_blank} (blank), "
+              f"tok/s={local.tok_s():.1f}", file=sys.stderr)
 
     # Drain the pool, bounded by the global ceiling.
     deadline = _global_deadline()

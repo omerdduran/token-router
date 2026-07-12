@@ -19,8 +19,15 @@ anything the hard way. Read this before touching the routing/model logic.
   locally is slow wall-clock; every timeout/blank failure traces back to this.
 - **Proven-safe images:** v17 (100% / ~4.5k tok), v22, v25, v27. **Aggressive
   local offload keeps failing** (v20 TIMEOUT, v24 15.8% gate-fail, v26 TIMEOUT).
-- **Current bet:** v28 = all 8 categories local (ZERO_API_CALLS) with a
-  Fireworks fallback for blank/slow/load-fail. Chasing ~0 tokens.
+- **v28 (all 8 local) scored 94.7% / 4,431 tok — barely better than v27.** The
+  fixed 0.65×540=351s cutoff (incl. model load) let only ~half the queue finish
+  locally; the rest shed to Fireworks. The ~400-token gain vs v27 was mostly the
+  cap cuts, not the extra local categories.
+- **Current bet:** v29 = v28 + (1) STREAMING local inference with a hard
+  deadline (interruptible → no TIMEOUT risk → local runs to ~495s instead of
+  351s), (2) warmup actually called + measured-speed per-task "will it fit?"
+  pre-shed, (3) local queue sorted cheapest-first & grouped by category
+  (prefix-cache reuse).
 
 ---
 
@@ -125,7 +132,8 @@ to Fireworks-only if the model fails to load.
 | v25 | v24 + fallback OFF + tight budget | 100% / 4891 | passes, but MORE tokens (biased to Fireworks) |
 | v26 | concurrent local + pool | **TIMEOUT** | cutoff too high (495s); blocking last inference passed 600s kill |
 | v27 | v26 + cutoff 0.5×global (270s) | 100% / 4822 / #21 | safe; code+logic still remote → ~4.8k tokens |
-| v28 | ALL 8 categories local | *pending* | ZERO_API_CALLS attempt, chasing ~0 tokens |
+| v28 | ALL 8 categories local, cutoff 0.65 | **94.7% / 4431** | cutoff at 351s (incl. load) → only ~half finished locally; gain vs v27 ≈ just the cap cuts |
+| v29 | streaming deadline + dynamic pre-shed + sorted queue | *pending* | interruptible generation kills the tail risk → local runs to ~495s |
 
 **Two earlier disasters worth noting:** the Go implementation scored **0.0%**
 five times — root cause was `results.json` written with **0600 perms** (root
@@ -176,6 +184,11 @@ fast but drops below usefulness (esp. sentiment/ner). Qwen was Qwen3 needs
    remote **concurrently**, and bound local by a wall-clock cutoff that leaves
    room for one worst-case (non-interruptible) inference + the drain before the
    ~600 s kill. A cutoff too close to the ceiling = TIMEOUT (v26).
+   **v29 update: streaming (`create_chat_completion(stream=True)`) makes
+   generation interruptible per token**, so the worst-case tail shrinks to one
+   prompt PREFILL and the cutoff can sit ~45s (`REMOTE_RESERVE_S`) under the
+   global ceiling instead of 0.65×. The fixed-cutoff caution above applies only
+   to non-streaming (blocking) calls.
 2. **`reasoning_effort=none` gives minimax visible CoT (needed for math/logic)
    but makes the Gemma-4 models return EMPTY.** To use Gemma-4 remotely you must
    send `low`/omit; but then it emits thinking tokens and is NOT cheaper than
@@ -223,8 +236,11 @@ fast but drops below usefulness (esp. sentiment/ner). Qwen was Qwen3 needs
 - **v17** — E2B, 4 categories local, OLD code. **Proven 100% / ~4.5k tokens.**
   The safe floor to revert to.
 - **v22 / v25 / v27** — current-code, Fireworks-heavy, all ~100% / ~4.7–4.9k.
-- **v28** — all-8-local (ZERO_API_CALLS attempt), 0-token target, Fireworks
-  fallback on blank/slow.
+- **v28** — all-8-local, fixed 351s cutoff. **94.7% / 4,431** — safe but the
+  cutoff shed ~half the queue; superseded by v29.
+- **v29** — all-8-local + streaming deadline (interruptible local generation),
+  measured-speed pre-shed, cheapest-first sorted queue. 0-token target,
+  Fireworks fallback on blank/won't-fit.
 - Rule: keep a known-good tag; if a new image fails the gate or times out,
   re-submit the last good one. The leaderboard shows ONLY the latest image.
 

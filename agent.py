@@ -102,9 +102,9 @@ def route(prompt: str, allow_local: bool = True):
             return ("done", answer)
 
     system, max_tokens, tier = _CONFIG[category]
-    # try_reserve gates on both availability AND the remaining local-time budget,
-    # so a slow box sheds long-output tasks to Fireworks instead of timing out.
-    if allow_local and local.try_reserve(category.value):
+    # Non-batch path only: no deadline here, the caller's pool is already
+    # deadline-bounded. The batch path in main.py gates on time itself.
+    if allow_local and local.available_for(category.value):
         try:
             answer = local.complete(system, prompt, max_tokens)
         except Exception:

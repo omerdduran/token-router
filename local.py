@@ -1,11 +1,9 @@
 """Bundled local model (zero scored tokens).
 
-A small GGUF (gemma-2-2b-it) baked into the image answers the task categories
-where it is reliably correct — measured on the eval set: summarization and NER,
-both extraction/transformation tasks a 2B handles well. Those answers cost zero
-Fireworks tokens. Everything else, and any local failure, routes to Fireworks
-unchanged, so the layer is strictly additive: it can only remove paid calls,
-never break the run.
+A small GGUF (gemma-4-E2B-it) baked into the image answers the categories in
+LOCAL_CATEGORIES at zero Fireworks tokens. Any local failure (blank output,
+exception, missed deadline) routes to Fireworks unchanged, so the layer is
+strictly additive: it can only remove paid calls, never break the run.
 """
 
 from __future__ import annotations
@@ -20,13 +18,14 @@ _llm = None
 _lock = threading.Lock()
 _CATEGORIES = {c.strip() for c in os.environ.get("LOCAL_CATEGORIES", "").split(",") if c.strip()}
 
-# Measured generation speed (tokens/sec) on THIS box, set by a startup warmup.
-# The grading box is CPU-only/2 vCPU and its speed is unknown until we run, so
-# routing adapts to it: a task is only kept local if its estimated generation
-# time fits the remaining local-time budget (see main.py) — otherwise it goes
-# to Fireworks. This makes a slow box shed long-output work instead of timing
-# out, and a fast box keep everything local.
+# Measured speeds (tokens/sec) on THIS box: decode from the startup warmup,
+# prefill learned online from each call's time-to-first-token. The grading box
+# is CPU-only/2 vCPU and its speed is unknown until we run, so routing adapts:
+# a task is only started locally if its estimated time fits before the hard
+# stop (see main.py) — otherwise it goes to Fireworks. A slow box thus sheds
+# long-output work instead of timing out; a fast box keeps everything local.
 _tok_s = 0.0
+_prefill_tok_s = 0.0
 # Typical output length per category (tokens), from the local benchmark; used
 # to estimate generation time before running. Deliberately a bit generous.
 _TYPICAL_OUT = {
@@ -64,6 +63,10 @@ def start() -> None:
     except Exception as exc:  # any load failure → Fireworks-only
         print(f"local: load failed ({exc}) — Fireworks-only", file=sys.stderr)
         _llm = None
+        return
+    # Learn this box's decode speed up front: est_seconds() needs it to decide
+    # which tasks fit before the hard stop. Also doubles as a model sanity check.
+    _measure_speed()
 
 
 def _measure_speed() -> None:
@@ -91,62 +94,84 @@ def tok_s() -> float:
     return _tok_s
 
 
-def est_seconds(category: str) -> float:
-    """Estimated local generation time for a category, or 0 if speed unknown
-    (unknown → don't block on time, fall back to the wall-clock budget).
-    A 1.3x margin guards against the warmup over-reading the box's speed."""
+def est_seconds(category: str, prompt_chars: int = 0) -> float:
+    """Estimated local time for a task: decode (typical output length at the
+    measured decode speed, with a 1.3x margin against the warmup over-reading
+    the box) plus prefill (prompt length at the learned prefill speed; before
+    the first real sample, assume prefill is 4x decode — conservative for CPU
+    llama.cpp). 0 if speed is unknown (→ don't gate on time; the streaming
+    deadline in complete() is the backstop)."""
     if _tok_s <= 0:
         return 0.0
-    return 1.3 * _TYPICAL_OUT.get(category, 200) / _tok_s
+    t = 1.3 * _TYPICAL_OUT.get(category, 200) / _tok_s
+    if prompt_chars > 0:
+        speed = _prefill_tok_s if _prefill_tok_s > 0 else 4.0 * _tok_s
+        t += (prompt_chars / 4.0) / speed
+    return t
+
+
+def sort_key(category: str, prompt_chars: int) -> tuple:
+    """Order for the local queue: short-output categories first (they save the
+    most remote tokens per local second — sentiment/ner/factual before
+    math/logic), grouped by category so llama.cpp's prefix cache reuses the
+    shared system prompt, longest prompts last within a category."""
+    return (_TYPICAL_OUT.get(category, 200), category, prompt_chars)
 
 
 def available_for(category: str) -> bool:
     return _llm is not None and category in _CATEGORIES
 
 
-# Remaining local-generation time budget (seconds), reserved greedily in task
-# order so the box never commits to more local work than it can finish. None
-# disables the guard (used in the non-batch path, which already runs in a
-# deadline-bounded pool).
-_budget_left = None
-_budget_lock = threading.Lock()
-
-
-def set_budget(seconds: float | None) -> None:
-    global _budget_left
-    _budget_left = seconds
-
-
-def try_reserve(category: str) -> bool:
-    """True if this task should run locally: the model is available for the
-    category AND its estimated time fits the remaining budget (reserving it).
-    A slow box thus keeps short tasks local and sheds long ones to Fireworks."""
-    if _llm is None or category not in _CATEGORIES:
-        return False
-    global _budget_left
-    with _budget_lock:
-        if _budget_left is None:
-            return True
-        est = est_seconds(category)
-        if est <= 0:            # unknown speed → rely on the wall-clock backstop
-            return True
-        if est <= _budget_left:
-            _budget_left -= est
-            return True
-    return False
-
-
-def complete(system: str, prompt: str, max_tokens: int) -> str:
-    """One local completion. gemma-2 has no system role, so the instruction is
+def complete(system: str, prompt: str, max_tokens: int,
+             deadline: float | None = None) -> str:
+    """One local completion. gemma has no system role, so the instruction is
     folded into the user turn. Serialized: llama.cpp is not thread-safe.
-    Returns '' on empty output (caller falls back to Fireworks)."""
+
+    Streams token by token so generation is INTERRUPTIBLE: past `deadline`
+    (absolute time.monotonic()) it stops and returns the partial text. This is
+    what lets the caller run local work close to the harness kill — a task
+    started late gets truncated instead of blocking past the deadline (the v26
+    TIMEOUT failure mode). Only the prefill of one prompt remains
+    non-interruptible. Returns '' on empty output (caller falls back to
+    Fireworks). Also updates the measured decode/prefill speeds from every
+    call, so est_seconds() tracks the real box, not just the warmup."""
+    global _tok_s, _prefill_tok_s
+    t0 = time.monotonic()
+    t_first = 0.0
+    parts: list[str] = []
+    n_out = 0
     with _lock:
-        resp = _llm.create_chat_completion(
+        stream = _llm.create_chat_completion(
             messages=[{"role": "user", "content": f"{system}\n\n{prompt}"}],
             max_tokens=max_tokens,
             temperature=0,
+            stream=True,
         )
-    return (resp["choices"][0]["message"]["content"] or "").strip()
+        try:
+            for chunk in stream:
+                now = time.monotonic()
+                if not t_first:
+                    t_first = now
+                choices = chunk.get("choices") or [{}]
+                piece = (choices[0].get("delta") or {}).get("content")
+                if piece:
+                    parts.append(piece)
+                    n_out += 1
+                if deadline is not None and now > deadline:
+                    break        # hard stop: a truncated answer beats a TIMEOUT
+        finally:
+            stream.close()
+    t_end = time.monotonic()
+    if t_first:
+        ttft = t_first - t0
+        p_tok = (len(system) + len(prompt)) / 4.0
+        if ttft > 0.05 and p_tok > 16:
+            pf = p_tok / ttft
+            _prefill_tok_s = pf if _prefill_tok_s <= 0 else 0.5 * (_prefill_tok_s + pf)
+        if n_out >= 8 and t_end > t_first:
+            dec = n_out / (t_end - t_first)
+            _tok_s = dec if _tok_s <= 0 else 0.5 * (_tok_s + dec)
+    return "".join(parts).strip()
 
 
 _CLASSIFY_LABELS = ("factual", "math", "sentiment", "summarization",
