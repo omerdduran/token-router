@@ -36,7 +36,7 @@ _CONFIG: dict[Category, tuple[str, int, str]] = {
     Category.MATH: (
         f"{_BASE} Work through it in brief steps, then end with "
         f"'Answer: <value>' on its own line.",
-        400, STRONG,
+        300, STRONG,
     ),
     Category.SENTIMENT: (
         f"{_BASE} State the sentiment as positive, negative, neutral, or mixed. "
@@ -58,17 +58,17 @@ _CONFIG: dict[Category, tuple[str, int, str]] = {
     Category.CODE_DEBUG: (
         f"{_BASE} State the bug in one sentence, then give the corrected "
         f"code in a single fenced block.",
-        520, CODE,
+        400, CODE,
     ),
     Category.CODE_GEN: (
         f"{_BASE} Output only the code in a single fenced block — correct, "
         f"complete, and self-contained.",
-        520, CODE,
+        400, CODE,
     ),
     Category.LOGIC: (
         f"{_BASE} Reason in brief numbered steps, checking each constraint, "
         f"then end with 'Answer: <value>' on its own line.",
-        460, STRONG,
+        350, STRONG,
     ),
 }
 

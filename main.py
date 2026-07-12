@@ -199,9 +199,11 @@ def run(tasks: list[dict]) -> list[dict]:
     # Local worker on this thread, overlapping the pool. local.complete() is a
     # blocking, non-interruptible C call, so a task started near the cutoff still
     # runs to completion — the cutoff must leave room for one worst-case local
-    # inference PLUS the pool drain before the harness kill (~600s). Half the
-    # global ceiling is deliberately conservative.
-    local_cutoff = _START + 0.5 * GLOBAL_DEADLINE_S
+    # inference PLUS the pool drain before the harness kill (~600s). With the
+    # per-category caps bounding a single inference to ~2 min, 0.65 of the global
+    # ceiling keeps the last-inference tail safely under the kill while leaving as
+    # much time as possible to answer everything locally (zero API tokens).
+    local_cutoff = _START + 0.65 * GLOBAL_DEADLINE_S
     for (i, t, system, prompt, max_tokens, tier) in local_jobs:
         if time.monotonic() > local_cutoff:
             _submit(i, t, (system, max_tokens, tier))    # out of time → Fireworks
