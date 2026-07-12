@@ -23,11 +23,13 @@ anything the hard way. Read this before touching the routing/model logic.
   fixed 0.65×540=351s cutoff (incl. model load) let only ~half the queue finish
   locally; the rest shed to Fireworks. The ~400-token gain vs v27 was mostly the
   cap cuts, not the extra local categories.
-- **Current bet:** v29 = v28 + (1) STREAMING local inference with a hard
-  deadline (interruptible → no TIMEOUT risk → local runs to ~495s instead of
-  351s), (2) warmup actually called + measured-speed per-task "will it fit?"
-  pre-shed, (3) local queue sorted cheapest-first & grouped by category
-  (prefix-cache reuse).
+- **v29 (streaming deadline) + v30 (epistemic escalation) — v30 scored 10.5%
+  GATE-FAIL (2/19).** v29 was never judged alone, so the failure can't be
+  attributed (lesson #11). **REVERTED: v28 is the current champion** (94.7% /
+  4,431 = lowest tokens among gate-passers; v17 100%/4,478 is the ultra-safe
+  floor). The v29/v30 code line stays in the repo (rollback knobs off restore
+  v28-like behavior only partially — the streaming layer remains) — do NOT
+  resubmit it without isolating variables.
 
 ---
 
@@ -133,8 +135,8 @@ to Fireworks-only if the model fails to load.
 | v26 | concurrent local + pool | **TIMEOUT** | cutoff too high (495s); blocking last inference passed 600s kill |
 | v27 | v26 + cutoff 0.5×global (270s) | 100% / 4822 / #21 | safe; code+logic still remote → ~4.8k tokens |
 | v28 | ALL 8 categories local, cutoff 0.65 | **94.7% / 4431** | cutoff at 351s (incl. load) → only ~half finished locally; gain vs v27 ≈ just the cap cuts |
-| v29 | streaming deadline + dynamic pre-shed + sorted queue | *pending* | interruptible generation kills the tail risk → local runs to ~495s |
-| v30 | v29 + epistemic escalation (validate.py, idle self-consistency) | *built, not pushed* | suspect local answers go to the REAL API; token spend ∝ uncertainty |
+| v29 | streaming deadline + dynamic pre-shed + sorted queue | **NEVER JUDGED ALONE** | pushed but not submitted separately — a methodological mistake (see v30) |
+| v30 | v29 + epistemic escalation (validate.py, idle self-consistency) | **10.5% gate-fail (2/19)** | catastrophic; can't attribute (two unjudged layers stacked). REVERTED to v28 |
 
 **Two earlier disasters worth noting:** the Go implementation scored **0.0%**
 five times — root cause was `results.json` written with **0600 perms** (root
@@ -215,6 +217,19 @@ fast but drops below usefulness (esp. sentiment/ner). Qwen was Qwen3 needs
    requires `logits_all=True` for logprobs, and Gemma's 262k vocab makes that
    buffer ~2.1GB at n_ctx=2048 → OOM. Use deterministic validators +
    self-consistency instead (v30).
+11. **ONE VARIABLE PER SUBMISSION.** v30 (10.5%) stacked the epistemic layer on
+   v29's streaming layer, and v29 was never judged alone — so the catastrophic
+   failure cannot be attributed to either layer. Post-mortem code review found
+   no exit-0 path that mass-blanks answers, which leaves two suspects: (a) an
+   ACCURACY_GATE_FAILED can be a **DISGUISED TIMEOUT** — if the run overruns,
+   the harness's SIGTERM hits our handler, which flushes the mostly-skeleton
+   results.json and exits 0, so the judge scores blanks instead of reporting
+   TIMEOUT (v24's 15.8% may have been the same); (b) something in the
+   streaming/prefix-cache/dynamic-deadline layer behaves differently on the
+   real box than under QEMU. QEMU validates FUNCTION only — real-box tok/s has
+   still never been measured (v28's "half the queue missed 351s" is the only
+   real datapoint, and it implies the box is SLOW). Retry path if ever: submit
+   v29 alone first.
 
 ---
 
@@ -265,6 +280,9 @@ fast but drops below usefulness (esp. sentiment/ner). Qwen was Qwen3 needs
   n_ctx×vocab×4B ≈ 2.1GB for Gemma's 262k vocab → OOM on the 4GB box.
   QEMU smoke: 7/7 local, 0 rejects (no false-fires on real answers),
   verify 4 checked / 0 mismatch, 0 tokens, exit 0.
+  **JUDGED: 10.5% ACCURACY_GATE_FAILED (2/19) — see lesson #11. Reverted to
+  v28; the design ideas may be sound but are unattributable until the v29
+  streaming layer is judged in isolation.**
 - Rule: keep a known-good tag; if a new image fails the gate or times out,
   re-submit the last good one. The leaderboard shows ONLY the latest image.
 
