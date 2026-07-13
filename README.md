@@ -9,7 +9,8 @@ pay the API for what genuinely needs it.**
 Four of the eight task categories are answered entirely inside the container at
 **zero Fireworks tokens** by a bundled Gemma model; only the hardest remainder
 escalates to the paid API — with terse prompts, tight token caps, and
-same-category batching. Latest scored run: **100% accuracy**.
+same-category batching. Best scored run: **2,221 total Fireworks tokens**, with
+accuracy up to **100%** across scored runs.
 
 ## How it works
 

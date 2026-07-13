@@ -25,11 +25,17 @@ anything the hard way. Read this before touching the routing/model logic.
   cap cuts, not the extra local categories.
 - **v29 (streaming deadline) + v30 (epistemic escalation) — v30 scored 10.5%
   GATE-FAIL (2/19).** v29 was never judged alone, so the failure can't be
-  attributed (lesson #11). **REVERTED: v28 is the current champion** (94.7% /
-  4,431 = lowest tokens among gate-passers; v17 100%/4,478 is the ultra-safe
-  floor). The v29/v30 code line stays in the repo (rollback knobs off restore
-  v28-like behavior only partially — the streaming layer remains) — do NOT
-  resubmit it without isolating variables.
+  attributed (lesson #11). The v29/v30 code line stays in the repo (rollback
+  knobs off restore v28-like behavior only partially — the streaming layer
+  remains) — do NOT resubmit it without isolating variables.
+- **v17 re-scored 89.5% / 2,221 tokens (13 Jul) — THE CHAMPION, best result so
+  far.** The same image previously scored 100%/4,478: **token count is NOT
+  deterministic for local-offload images** — it varies ~2x with the judging
+  box's speed that run (a fast box finishes more inside LOCAL_BUDGET_S → fewer
+  sheds → fewer tokens). v17's exact source = commit `428c91d`, pinned as git
+  tag **`v17-submitted`** (verified 0-diff against the image's /app). Repo
+  HEAD is 3 architectural generations past it — build future variants FROM
+  THE TAG, not from HEAD.
 
 ---
 
@@ -126,7 +132,7 @@ to Fireworks-only if the model fails to load.
 | v13 | batch math+logic | +200 tok | batching hurts long-CoT categories |
 | v15 | strong tier → gemma-4-26b (ENV) | **7/19** | both gemma models blank under none; no minimax fallback |
 | v16 | gemma effort=low + factual→gemma | 4381 (↑) | gemma answers under "low" but is NOT cheaper than minimax(none) |
-| v17 | E2B local (math/sent/ner/summ) | **100% / 4478 / ~#20** | **proven safe; lowest-token gate-passer** |
+| v17 | E2B local (math/sent/ner/summ) | **100%/4478, re-run 89.5%/2221** | **CHAMPION. Token count varies ~2x run-to-run** (box speed decides how much fits in LOCAL_BUDGET_S) |
 | v19 | v17 + semantic classifier fallback | 18/19, 3845 (↑) then noisy | fallback re-routes no-match tasks to expensive correct categories |
 | v20 | Qwen3-4B + code local | **TIMEOUT** | 4B + long code output too slow (serial) |
 | v22 | Qwen3-4B + code, speed guard | 100% / 4736 | slow model → guard sheds to Fireworks → high tokens |
@@ -268,8 +274,8 @@ fast but drops below usefulness (esp. sentiment/ner). Qwen was Qwen3 needs
 
 ## 8. Image ladder / fallbacks (GHCR: `ghcr.io/omerdduran/tokenrouter-track1:<tag>`)
 
-- **v17** — E2B, 4 categories local, OLD code. **Proven 100% / ~4.5k tokens.**
-  The safe floor to revert to.
+- **v17** — E2B, 4 categories local, OLD code (source = tag `v17-submitted`,
+  commit 428c91d). **Scored 100%/4,478 and 89.5%/2,221 — the champion.**
 - **v22 / v25 / v27** — current-code, Fireworks-heavy, all ~100% / ~4.7–4.9k.
 - **v28** — all-8-local, fixed 351s cutoff. **94.7% / 4,431** — safe but the
   cutoff shed ~half the queue; superseded by v29.

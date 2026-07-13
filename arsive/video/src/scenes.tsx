@@ -266,7 +266,7 @@ export const Numbers: React.FC = () => {
   const stats = [
     {big: '16', small: 'small models benchmarked\nto pick the engine'},
     {big: 'no TIMEOUT', small: 'time-budgeted local inference\nnever overruns'},
-    {big: '100%', small: 'accuracy on the latest\nscored leaderboard run'},
+    {big: '2,221', small: 'tokens on the best scored run\naccuracy up to 100%'},
   ];
   return (
     <Bg>

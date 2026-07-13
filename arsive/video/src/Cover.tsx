@@ -79,7 +79,7 @@ export const Cover: React.FC = () => (
           fontWeight: 800,
         }}
       >
-        half the categories answered at zero scored tokens · 100% accuracy
+        half the categories at zero scored tokens · best run: 2,221 tokens
       </div>
     </AbsoluteFill>
   </Bg>

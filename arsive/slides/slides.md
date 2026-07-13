@@ -49,7 +49,7 @@ hard remainder is ever bought.
 <div v-click class="card card-accent inline-block mt-10 px-8">
 <div class="text-sm opacity-70 mb-1">Track 1 is scored on total Fireworks tokens</div>
 <div class="text-2xl font-bold"><span class="num">answer free first · pay only for the rest</span></div>
-<div class="text-sm opacity-70 mt-1">4 of 8 categories at zero scored tokens · 100% accuracy on the latest scored run</div>
+<div class="text-sm opacity-70 mt-1">4 of 8 categories at zero scored tokens · best scored run: 2,221 tokens</div>
 </div>
 
 ---
@@ -257,8 +257,8 @@ class: text-center centered-h
 </div>
 
 <div class="card">
-<div class="text-3xl num">100%</div>
-<div class="text-sm opacity-75 mt-1">accuracy on the latest<br>scored leaderboard run</div>
+<div class="text-3xl num">2,221</div>
+<div class="text-sm opacity-75 mt-1">tokens on the best scored run<br>accuracy up to 100%</div>
 </div>
 
 </div>
